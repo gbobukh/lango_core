@@ -1,0 +1,13 @@
+/* Opacity Strategy: Fade out the entire row */
+#changelist table tbody tr.row-locked,
+body #changelist table tbody tr.row-locked {
+    opacity: 0.5 !important;
+    filter: opacity(50%) grayscale(80%) !important;
+    /* Standard + Grayscale for effect */
+    background-color: #f9f9f9 !important;
+}
+
+/* Ensure the lock icon itself remains fully visible/opaque if possible */
+/* Note: filter on TR affects everything inside. We generally accept this for "disabled" look. */
+/* But if we want the lock to pop, we might need relative positioning, which is hard on table rows. */
+/* For now, fading the lock too is acceptable as validation status "Locked" implies "Archive". */

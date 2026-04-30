@@ -1,0 +1,45 @@
+.scheduler-argument-mapping-widget {
+    max-width: 600px;
+}
+
+.scheduler-argument-mapping-placeholder,
+.scheduler-arg-loading,
+.scheduler-arg-error {
+    color: #666;
+    font-style: italic;
+    padding: 10px 0;
+}
+
+.scheduler-arg-error {
+    color: #ba2121;
+}
+
+.scheduler-arg-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.scheduler-arg-label {
+    flex: 0 0 180px;
+    font-weight: 500;
+}
+
+.scheduler-arg-input-cell {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scheduler-arg-input,
+.scheduler-arg-preset {
+    padding: 6px 10px;
+    min-width: 120px;
+}
+
+.scheduler-date-start,
+.scheduler-date-end {
+    min-width: 140px;
+}

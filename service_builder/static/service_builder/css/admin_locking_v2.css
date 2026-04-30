@@ -1,0 +1,38 @@
+/* Aggressive Visual Locking v2 - High Contrast */
+
+/* Target the row with high specificity */
+#changelist table tbody tr.row-locked {
+    background-color: #e0e0e0 !important;
+    /* Darker Grey for visibility */
+    color: #888 !important;
+}
+
+/* Target cells specifically to override Django striping */
+#changelist table tbody tr.row-locked td,
+#changelist table tbody tr.row-locked th {
+    background-color: #e0e0e0 !important;
+    /* Darker Grey */
+    color: #666 !important;
+    /* Darker text for readability against grey */
+    opacity: 0.7;
+    /* Slight transparency for "ghost" effect */
+}
+
+/* Dim links */
+#changelist table tbody tr.row-locked a {
+    color: #666 !important;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+/* Keep the lock icon visible */
+#changelist table tbody tr.row-locked .lock-status {
+    opacity: 1 !important;
+    font-size: 1.2em;
+    cursor: help;
+}
+
+/* Hover state - prevent hover highlight on locked rows */
+#changelist table tbody tr.row-locked:hover td {
+    background-color: #e0e0e0 !important;
+}

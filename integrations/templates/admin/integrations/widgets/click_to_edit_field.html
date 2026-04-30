@@ -1,0 +1,17 @@
+<div class="click-to-edit-container" style="display: flex; align-items: center; gap: 10px;">
+    {% if is_multiline %}
+    <div class="click-to-edit-display" style="font-weight: 500; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; max-height: 240px; overflow: auto; width: 100%;">
+        {{ display_value|default:"-" }}
+    </div>
+    {% else %}
+    <div class="click-to-edit-display" style="font-weight: 500;">
+        {{ display_value|default:"-" }}
+    </div>
+    {% endif %}
+    <div class="click-to-edit-trigger" style="cursor: pointer; opacity: 0.6;" title="Edit">
+        ✏️
+    </div>
+    <div class="click-to-edit-input" style="visibility: hidden; position: absolute; opacity: 0; z-index: -1;">
+        {{ widget_html|safe }}
+    </div>
+</div>

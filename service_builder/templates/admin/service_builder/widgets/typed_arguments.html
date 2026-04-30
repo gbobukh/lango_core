@@ -1,0 +1,15 @@
+<div id="typed-arguments-widget-{{ widget.name }}" class="typed-arguments-widget" data-name="{{ widget.name }}">
+    <input type="hidden" name="{{ widget.name }}" value="{{ widget.value }}" {% if widget.attrs.id %}id="{{ widget.attrs.id }}"{% endif %}>
+    <div class="typed-arguments-container">
+        <!-- JS will render table here -->
+        <p class="loading">Loading arguments editor...</p>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.TypedArgumentsWidget) {
+            window.TypedArgumentsWidget.init('typed-arguments-widget-{{ widget.name }}');
+        }
+    });
+</script>

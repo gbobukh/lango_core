@@ -1,0 +1,60 @@
+.typed-arguments-widget .typed-arguments-container {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 10px;
+    background: #fff;
+}
+
+.typed-arguments-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.typed-arguments-table th,
+.typed-arguments-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.typed-arguments-table th {
+    background: #f8f8f8;
+    font-weight: bold;
+    color: #666;
+}
+
+.typed-arguments-table input[type="text"],
+.typed-arguments-table select {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+
+.typed-arguments-table .btn-remove {
+    color: #cc0000;
+    cursor: pointer;
+    font-weight: bold;
+    text-align: center;
+}
+
+.typed-arguments-widget .btn-add {
+    background: #447e9b;
+    color: #fff;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.typed-arguments-widget .btn-add:hover {
+    background: #35637e;
+}
+
+.typed-arguments-widget .loading {
+    color: #999;
+    font-style: italic;
+}

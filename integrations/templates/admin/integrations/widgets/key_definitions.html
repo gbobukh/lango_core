@@ -1,0 +1,199 @@
+<div id="key-definitions-container">
+    <input type="hidden" name="{{ widget.name }}" id="id_{{ widget.name }}" value="{{ widget.value|default:'[]' }}">
+    <div id="key-inputs-list" style="margin-bottom: 10px;">
+        <!-- Inputs will be injected here -->
+    </div>
+    <button type="button" id="add-key-btn" class="button" style="margin-top: 5px;">Add auth field name</button>
+</div>
+
+<style>
+    .key-row {
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        padding: 5px;
+        background: #f8f8f8;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        width: fit-content;
+    }
+
+    .key-value-display {
+        margin-right: 10px;
+        font-weight: bold;
+        min-width: 150px;
+    }
+
+    .key-input {
+        margin-right: 10px;
+        width: 200px;
+    }
+
+    .action-btn {
+        margin-left: 5px;
+        cursor: pointer;
+        font-size: 12px;
+        text-decoration: none;
+    }
+
+    .edit-btn {
+        color: #447e9b;
+    }
+
+    .remove-btn {
+        color: #ba2121;
+    }
+
+    .save-btn {
+        color: #28a745;
+        font-weight: bold;
+    }
+</style>
+
+<script>
+    (function ($) {
+        document.addEventListener('DOMContentLoaded', function () {
+            const hiddenInput = document.getElementById('id_{{ widget.name }}');
+            const listContainer = document.getElementById('key-inputs-list');
+            const addBtn = document.getElementById('add-key-btn');
+
+            let keys = [];
+            try {
+                keys = JSON.parse(hiddenInput.value);
+                if (!Array.isArray(keys)) keys = [];
+            } catch (e) {
+                keys = [];
+            }
+
+            function updateHiddenInput() {
+                const rows = listContainer.querySelectorAll('.key-row');
+                const values = [];
+                rows.forEach(row => {
+                    // If in edit mode, take input value. If in view mode, take text content.
+                    const input = row.querySelector('input.key-input');
+                    if (input) {
+                        if (input.value.trim() !== "") values.push(input.value.trim());
+                    } else {
+                        const span = row.querySelector('.key-value-display');
+                        if (span && span.textContent.trim() !== "") values.push(span.textContent.trim());
+                    }
+                });
+                hiddenInput.value = JSON.stringify(values);
+                // Trigger change event for listeners (e.g. argument mapping)
+                const event = new Event('change', { bubbles: true });
+                hiddenInput.dispatchEvent(event);
+            }
+
+            function createRow(value = "", isEditing = false) {
+                const row = document.createElement('div');
+                row.className = 'key-row';
+
+                function renderViewMode(val) {
+                    row.innerHTML = '';
+
+                    const span = document.createElement('span');
+                    span.className = 'key-value-display';
+                    span.textContent = val;
+
+                    const editBtn = document.createElement('span');
+                    editBtn.className = 'action-btn edit-btn';
+                    editBtn.innerHTML = '✎'; // Pencil icon
+                    editBtn.style.cursor = 'pointer';
+                    editBtn.style.fontSize = '12px';
+                    editBtn.onclick = function (e) {
+                        e.preventDefault();
+                        renderEditMode(val);
+                    };
+
+                    const removeBtn = document.createElement('a');
+                    removeBtn.className = 'action-btn remove-btn';
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.onclick = function (e) {
+                        e.preventDefault();
+                        row.remove();
+                        updateHiddenInput();
+                    };
+
+                    row.appendChild(span);
+                    row.appendChild(editBtn);
+                    row.appendChild(removeBtn);
+                }
+
+                function renderEditMode(val) {
+                    row.innerHTML = '';
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = val;
+                    input.className = 'key-input';
+
+                    // Auto-focus
+                    setTimeout(() => input.focus(), 0);
+
+                    const saveBtn = document.createElement('a');
+                    saveBtn.className = 'action-btn save-btn';
+                    saveBtn.textContent = 'Save'; // Or checkmark
+
+                    const saveAction = function () {
+                        const newValue = input.value.trim();
+                        if (newValue) {
+                            renderViewMode(newValue);
+                            updateHiddenInput();
+                        } else {
+                            // If empty, maybe remove? Or just stay in edit? 
+                            // Let's stay in edit but show red border? Or just remove if empty on save?
+                            // For now, let's just remove if empty on save to keep it clean.
+                            row.remove();
+                            updateHiddenInput();
+                        }
+                    };
+
+                    saveBtn.onclick = function (e) {
+                        e.preventDefault();
+                        saveAction();
+                    };
+
+                    input.addEventListener('keypress', function (e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveAction();
+                        }
+                    });
+
+                    // Optional: Save on blur? 
+                    // input.addEventListener('blur', saveAction); 
+                    // Blur can be tricky if clicking the save button triggers blur first. 
+                    // Let's stick to explicit Save button or Enter key for now to be safe.
+
+                    const removeBtn = document.createElement('a');
+                    removeBtn.className = 'action-btn remove-btn';
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.onclick = function (e) {
+                        e.preventDefault();
+                        row.remove();
+                        updateHiddenInput();
+                    };
+
+                    row.appendChild(input);
+                    row.appendChild(saveBtn);
+                    row.appendChild(removeBtn);
+                }
+
+                if (isEditing || !value) {
+                    renderEditMode(value);
+                } else {
+                    renderViewMode(value);
+                }
+
+                listContainer.appendChild(row);
+            }
+
+            // Initialize existing keys in View mode
+            keys.forEach(key => createRow(key, false));
+
+            addBtn.addEventListener('click', function () {
+                createRow("", true); // New row in Edit mode
+            });
+        });
+    })(django.jQuery);
+</script>

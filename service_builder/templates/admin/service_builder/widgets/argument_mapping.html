@@ -1,0 +1,33 @@
+<div class="argument-mapping-widget" data-name="{{ widget.name }}">
+    <textarea name="{{ widget.name }}" {% include "django/forms/widgets/attrs.html" %}
+        style="display:none;">{{ widget.value }}</textarea>
+
+    <div class="mapping-container">
+        <p class="help">Select a Method to see arguments.</p>
+        <table class="mapping-table" style="width: 100%; border-collapse: collapse; display: none;">
+            <thead>
+                <tr>
+                    <th style="width: 30%; text-align: left; padding: 5px; border-bottom: 1px solid #ccc;">Method
+                        Argument</th>
+                    <th style="width: 70%; text-align: left; padding: 5px; border-bottom: 1px solid #ccc;">Context
+                        Variable</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be injected by JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    .mapping-table td {
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .mapping-table select {
+        width: 100%;
+        padding: 5px;
+    }
+</style>

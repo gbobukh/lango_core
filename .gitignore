@@ -1,0 +1,59 @@
+# --- Secrets / local env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Django runtime ---
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+
+# --- Logs (project-specific) ---
+logs/
+*.log
+gunicorn_*.log
+gunicorn_access.log
+gunicorn_error.log
+gunicorn_nohup.log
+server.log
+validation_debug.log
+debug_log.txt
+crash_output.txt
+success_output.txt
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Build / temp ---
+tmp/
+temp/
+*.tmp
+
+# --- Cursor local metadata ---
+.cursor/

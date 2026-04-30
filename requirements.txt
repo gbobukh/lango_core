@@ -1,0 +1,5 @@
+Django==5.2.7
+gunicorn==23.0.0
+psycopg2-binary
+python-crontab>=3.0.0
+redis

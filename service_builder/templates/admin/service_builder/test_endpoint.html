@@ -1,0 +1,103 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Run Tests{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>window.csrfToken = '{{ csrf_token }}';</script>
+{% endblock %}
+
+{% block content %}
+<h1>Run Tests</h1>
+
+<div class="run-tests-form">
+    <div class="form-row">
+        <label>Testing Workflow / Scenario / Method:</label>
+        <span><strong id="entity-name">{{ entity_name|default:"Select below" }}</strong></span>
+    </div>
+
+    <div id="auth-row" class="form-row">
+        <label for="auth-select">Auth ID:</label>
+        <select id="auth-select">
+            <option value="">-- Select Auth --</option>
+            {% for auth in auth_choices %}
+            <option value="{{ auth.id }}">{{ auth.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <input type="hidden" id="scenario-id" value="{{ scenario_id|default:'' }}">
+    <input type="hidden" id="workflow-id" value="{{ workflow_id|default:'' }}">
+    <input type="hidden" id="action-id" value="{{ action_id|default:'' }}">
+    <input type="hidden" id="method-id" value="{{ method_id|default:'' }}">
+    <input type="hidden" id="scenario-arguments" value="{{ scenario_arguments_json|default:'[]' }}">
+    <input type="hidden" id="method-arguments" value="{{ method_arguments_json|default:'[]' }}">
+    <input type="hidden" id="method-endpoint-url" value="{{ method_endpoint_url|default:'' }}">
+    <input type="hidden" id="method-http-method" value="{{ method_http_method|default:'GET' }}">
+    <div class="form-row">
+        <button id="btn-run" class="button default">Analyze & Run</button>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="terminal" class="terminal-output"></div>
+
+<div class="test-tabs">
+    <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="core-variables-tab">Core variables</button>
+        <button class="tab-btn" data-tab="external-requests-tab">External requests</button>
+    </div>
+
+    <div id="core-variables-tab" class="tab-pane active">
+        <div id="core-variables-content" class="tab-content-inner">
+            <p class="empty-state">No context variables yet. Run a test to see values.</p>
+        </div>
+    </div>
+
+    <div id="external-requests-tab" class="tab-pane" style="display:none;">
+        <div id="external-requests-content" class="tab-content-inner">
+            <p class="empty-state">No external requests yet. Run a test to see API calls.</p>
+        </div>
+    </div>
+</div>
+
+<style>
+.run-tests-form { margin-bottom: 20px; }
+.form-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.form-row label { min-width: 120px; }
+.terminal-output { background: #1e1e1e; color: #d4d4d4; padding: 15px; font-family: monospace; font-size: 12px; min-height: 200px; max-height: 400px; overflow-y: auto; }
+.terminal-line { margin: 2px 0; }
+.status-success { color: #4ec9b0; }
+.status-error { color: #f48771; }
+.status-info { color: #9cdcfe; }
+.test-tabs { margin-top: 20px; }
+.tab-buttons { display: flex; gap: 5px; margin-bottom: 10px; }
+.tab-btn { padding: 8px 16px; cursor: pointer; border: 1px solid #ccc; background: #f5f5f5; }
+.tab-btn.active { background: #79aec8; color: white; border-color: #79aec8; }
+.tab-pane { padding: 15px; border: 1px solid #ddd; background: #fff; }
+.tab-content-inner pre { background: #f5f5f5; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+.context-vars-table { width: 100%; border-collapse: collapse; }
+.context-vars-table th, .context-vars-table td { padding: 8px; border: 1px solid #ddd; text-align: left; }
+.external-request-block { margin: 20px 0; padding: 15px; border: 1px solid #ddd; background: #fafafa; }
+.external-request-block h4 { margin-top: 0; }
+.empty-state { color: #666; font-style: italic; }
+</style>
+
+<script>
+function openTab(tabId) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    var pane = document.getElementById(tabId);
+    if (pane) pane.style.display = 'block';
+    var btn = document.querySelector('[data-tab="' + tabId + '"]');
+    if (btn) btn.classList.add('active');
+}
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { openTab(this.getAttribute('data-tab')); });
+});
+</script>
+
+<script src="{% static 'service_builder/js/test_terminal.js' %}?v=50"></script>
+{% endblock %}

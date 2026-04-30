@@ -1,0 +1,8 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+    window.TARGET_PARAMS_DATA = {{ target_params_json | safe }};
+</script>
+{% endblock %}

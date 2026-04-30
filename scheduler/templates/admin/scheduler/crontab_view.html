@@ -1,0 +1,91 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {% trans "Django site admin" %}{% endblock %}
+
+{% block breadcrumbs %}
+<ol class="breadcrumbs">
+    <li><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+    <li><a href="{% url 'admin:app_list' app_label='scheduler' %}">SCHEDULER</a></li>
+    <li><a href="{% url 'admin:scheduler_scheduledworkflow_changelist' %}">{% trans 'Scheduled Workflows' %}</a></li>
+    <li aria-current="page">{{ title }}</li>
+</ol>
+{% endblock %}
+
+{% block content %}
+{% if crontab_info.error %}
+<div class="errornote">
+    <strong>{% trans "Error" %}:</strong> {{ crontab_info.error }}
+</div>
+{% else %}
+
+<div class="summary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6;">
+    <p><strong>{% trans "Active in DB" %}:</strong> {{ crontab_info.active_in_db }} | <strong>{% trans "In crontab" %}:</strong> {{ crontab_info.in_crontab }}</p>
+</div>
+
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+    <thead>
+        <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
+            <th style="padding: 10px; text-align: left;">{% trans "Status" %}</th>
+            <th style="padding: 10px; text-align: left;">{% trans "Schedule" %}</th>
+            <th style="padding: 10px; text-align: left;">{% trans "Command" %}</th>
+            <th style="padding: 10px; text-align: left;">{% trans "Arguments" %}</th>
+            <th style="padding: 10px; text-align: left;">{% trans "Scheduled Workflow" %}</th>
+            <th style="padding: 10px; text-align: left;">{% trans "Run" %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in crontab_info.entries %}
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px;">
+                {% if e.status == 'synced' %}
+                <span style="color: #28a745;">✓ synced</span>
+                {% elif e.status == 'orphan' %}
+                <span style="color: #dc3545;">orphan (sw_id={{ e.sw_id }} deleted/inactive)</span>
+                {% elif e.status == 'missing' %}
+                <span style="color: #ffc107;">⚠ missing from crontab</span>
+                {% else %}
+                <span>{{ e.status }}</span>
+                {% endif %}
+                {% if e.is_running %}
+                <span style="color: #0d6efd; margin-left: 8px;">• running</span>
+                {% endif %}
+            </td>
+            <td style="padding: 10px; font-family: monospace;">{{ e.cron_expr }}</td>
+            <td style="padding: 10px; font-family: monospace; font-size: 12px; max-width: 400px; overflow-x: auto;">{{ e.command }}</td>
+            <td style="padding: 10px; font-size: 12px; max-width: 300px;">{{ e.arguments_summary|default:"—" }}</td>
+            <td style="padding: 10px;">
+                {% if e.sw %}
+                <a href="{% url 'admin:scheduler_scheduledworkflow_change' e.sw.pk %}">{{ e.sw.workflow.name }} ({{ e.sw.frequency.name }})</a>
+                {% elif e.sw_id %}
+                {% trans "ID" %} {{ e.sw_id }} — {% trans "not found" %}
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td style="padding: 10px;">
+                {% if e.sw %}
+                <form method="post" action="{% url 'admin:scheduler_scheduledworkflow_run' e.sw_id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="button" {% if e.is_running %}disabled title="{% trans 'Already running' %}"{% endif %}>
+                        {% if e.is_running %}{% trans "Running..." %}{% else %}{% trans "Run" %}{% endif %}
+                    </button>
+                </form>
+                {% else %}
+                —
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="6" style="padding: 20px; color: #666;">{% trans "No scheduler entries in crontab." %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p><em>{% trans "Crontab syncs automatically when you save a Scheduled Workflow or Frequency." %}</em></p>
+{% endif %}
+
+<p style="margin-top: 20px;"><a href="{% url 'admin:scheduler_scheduledworkflow_changelist' %}" class="button">← {% trans "Back to Scheduled Workflows" %}</a></p>
+{% endblock %}

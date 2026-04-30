@@ -1,0 +1,79 @@
+{% extends "admin/base_site.html" %}
+{% block title %}Test API Auth{% endblock %}
+
+{% block content %}
+<h1>Test API Auth: {{ result.auth_name }}</h1>
+<p><strong>Auth Type:</strong> {{ result.auth_type }}</p>
+{% if result.error %}<p style="color: #721c24;"><strong>Error:</strong> {{ result.error }}</p>{% endif %}
+{% if result.token_info %}
+<p>Token → <strong>{{ result.token_info.inject_in }}</strong> as <strong>{{ result.token_info.inject_key }}</strong> (preview: {{ result.token_info.token_preview }})</p>
+{% endif %}
+
+{% if result.mode == 'static' %}
+<p><em>Static credentials (no login_url). No HTTP request was made.</em></p>
+{% endif %}
+
+{% if result.auth_type_config %}
+<h3>Auth Type config (Active Authentication)</h3>
+<div style="background: #f8f9fa; padding: 15px; font-family: monospace; font-size: 12px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+    <p><strong>login_url:</strong> {{ result.auth_type_config.login_url }}</p>
+    <p><strong>token_path:</strong> {{ result.auth_type_config.token_path }}</p>
+    <p><strong>inject_in:</strong> {{ result.auth_type_config.inject_in }}</p>
+    <p><strong>inject_key:</strong> {{ result.auth_type_config.inject_key }}</p>
+</div>
+{% endif %}
+
+{% if result.token_extraction %}
+<h3>Token extraction (token_path)</h3>
+<div style="background: #f8f9fa; padding: 15px; font-family: monospace; font-size: 12px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+    <p><strong>Path:</strong> {{ result.token_extraction.path }}</p>
+    <p><strong>Steps:</strong></p>
+    <ul style="margin: 5px 0;">
+    {% for s in result.token_extraction.steps %}
+    <li>{{ s.step }} (in {{ s.in }}) → {% if s.found %}✓ found{% else %}✗ not found{% endif %}</li>
+    {% endfor %}
+    </ul>
+    {% if result.token_extraction.extracted_value %}
+    <p><strong>Extracted value:</strong> {{ result.token_extraction.extracted_value }}</p>
+    {% endif %}
+    {% if result.token_extraction.error %}
+    <p style="color: #721c24;"><strong>Error:</strong> {{ result.token_extraction.error }}</p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if result.injection_preview %}
+<h3>Injection preview (inject_key → inject_in)</h3>
+<div style="background: #f8f9fa; padding: 15px; font-family: monospace; font-size: 12px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+    <p>How the token will be added to the next API request:</p>
+    <pre style="margin: 5px 0; white-space: pre-wrap;">{{ result.injection_preview }}</pre>
+</div>
+{% endif %}
+
+{% if result.request_details %}
+<h3>Request (raw)</h3>
+<div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; font-family: monospace; font-size: 12px; overflow-x: auto; margin-bottom: 20px;">
+    <p><strong>Method:</strong> {{ result.request_details.method }}</p>
+    <p><strong>URL:</strong> {{ result.request_details.url }}</p>
+    <p><strong>Headers:</strong></p>
+    <pre style="margin: 5px 0; white-space: pre-wrap;">{% for k, v in result.request_details.headers.items %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+    <p><strong>Body:</strong></p>
+    <pre style="margin: 5px 0; white-space: pre-wrap;">{{ result.request_details.body_str|default:"(empty)" }}</pre>
+</div>
+{% endif %}
+
+{% if result.response_details %}
+<h3>Response (raw)</h3>
+<div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; font-family: monospace; font-size: 12px; overflow-x: auto; margin-bottom: 20px;">
+    <p><strong>Status:</strong> {{ result.response_details.status_code }}</p>
+    <p><strong>Headers:</strong></p>
+    <pre style="margin: 5px 0; white-space: pre-wrap;">{% for k, v in result.response_details.headers.items %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+    <p><strong>Body:</strong></p>
+    <pre style="margin: 5px 0; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">{{ result.response_details.body_str|default:"(empty)" }}</pre>
+</div>
+{% endif %}
+
+<p style="margin-top: 20px;"><a href="{% url 'admin:integrations_apiauthid_changelist' %}" class="button">← Back to Auth IDs</a></p>
+{% endblock %}

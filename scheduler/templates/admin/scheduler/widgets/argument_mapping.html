@@ -1,0 +1,6 @@
+<div id="scheduler-argument-mapping-{{ widget.name }}" class="scheduler-argument-mapping-widget" data-name="{{ widget.name }}" data-api-base="/admin/scheduler/scheduledworkflow/api/workflow-arguments/">
+    <input type="hidden" name="{{ widget.name }}" value="{{ widget.value|escape }}" {% if widget.attrs.id %}id="{{ widget.attrs.id }}"{% endif %}>
+    <div class="scheduler-argument-mapping-container">
+        <p class="scheduler-argument-mapping-placeholder">Выберите workflow, чтобы настроить аргументы.</p>
+    </div>
+</div>
