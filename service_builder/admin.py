@@ -29,7 +29,7 @@ from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils.text import capfirst
 from django.contrib.admin.utils import NestedObjects
-from .views import TestEndpointView, GetMethodArgumentsView, GetScenarioArgumentsView, GetScenarioDetailsView, ResolveActionVariantView, GetBusinessActionArgumentsView
+from .views import TestEndpointView, GetMethodArgumentsView, GetMethodsListView, GetScenarioArgumentsView, GetScenarioDetailsView, ResolveActionVariantView, GetBusinessActionArgumentsView
 from .api import ModelChoicesView
 
 @admin.action(description='Duplicate selected objects')
@@ -518,7 +518,7 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
         js = (
             'service_builder/js/argument_mapping_v14.js',
             'service_builder/js/context_help.js',
-            'service_builder/js/scenario_step_polymorphic_v9.js',
+            'service_builder/js/scenario_step_polymorphic_v11.js',
         )
 
     LOCKED_JSON_FIELDS = {
@@ -622,6 +622,7 @@ class ScenarioAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         from .api import ModelDiscoveryView, ModelFieldsView, ModelChoicesView
         custom_urls = [
             path('api/method-arguments/<int:method_id>/', self.admin_site.admin_view(GetMethodArgumentsView.as_view()), name='service_builder_get_method_arguments'),
+            path('api/methods/', self.admin_site.admin_view(GetMethodsListView.as_view()), name='service_builder_get_methods'),
             path('api/models/', self.admin_site.admin_view(ModelDiscoveryView.as_view()), name='service_builder_get_models'),
             path('api/models/<str:app_label>/<str:model_name>/fields/', self.admin_site.admin_view(ModelFieldsView.as_view()), name='service_builder_get_model_fields'),
             path('api/models/<str:app_label>/<str:model_name>/choices/', self.admin_site.admin_view(ModelChoicesView.as_view()), name='service_builder_get_model_choices'),

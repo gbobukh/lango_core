@@ -175,3 +175,141 @@ class TransformUpdateNestedByPredicateTests(TestCase):
         self.assertTrue(offer_60['enabled'])
         # Ensure original context object is not mutated in place
         self.assertTrue(campaign['customRotation']['rules'][0]['paths'][0]['offers'][0]['enabled'])
+
+
+class ScenarioStepContractValidationTests(TestCase):
+    """Contracts for ScenarioStep polymorphism (scenario_step_contracts)."""
+
+    def test_api_call_ok(self):
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        validate_scenario_step_cleaned(
+            {
+                'step_type': 'API_CALL',
+                'method': SimpleNamespace(pk=1),
+                'action_type': None,
+                'action_config': {},
+            }
+        )
+
+    def test_api_call_requires_method(self):
+        from django.core.exceptions import ValidationError
+
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned(
+                {
+                    'step_type': 'API_CALL',
+                    'method': None,
+                    'action_type': None,
+                    'action_config': {},
+                }
+            )
+        self.assertIn('method', ctx.exception.error_dict)
+
+    def test_api_call_clears_action_type_and_action_config(self):
+        """Для API_CALL поля action не используются — контракт сбрасывает их в cleaned_data."""
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        data = {
+            'step_type': 'API_CALL',
+            'method': SimpleNamespace(pk=1),
+            'action_type': 'FILTER',
+            'action_config': {'routing': {'methods': [{'entity': 'x'}]}},
+        }
+        validate_scenario_step_cleaned(data)
+        self.assertIsNone(data['action_type'])
+        self.assertEqual(data['action_config'], {})
+
+    def test_action_ok_and_rejects_method(self):
+        from django.core.exceptions import ValidationError
+
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        validate_scenario_step_cleaned(
+            {
+                'step_type': 'ACTION',
+                'method': None,
+                'action_type': 'MERGE',
+                'action_config': {'input_a': 'a', 'input_b': 'b'},
+            }
+        )
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned(
+                {
+                    'step_type': 'ACTION',
+                    'method': SimpleNamespace(pk=1),
+                    'action_type': 'MERGE',
+                    'action_config': {},
+                }
+            )
+        self.assertIn('method', ctx.exception.error_dict)
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned(
+                {
+                    'step_type': 'ACTION',
+                    'method': None,
+                    'action_type': None,
+                    'action_config': {},
+                }
+            )
+        self.assertIn('action_type', ctx.exception.error_dict)
+
+    def test_api_batch_requires_source_routes_and_method_ref(self):
+        from django.core.exceptions import ValidationError
+
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        validate_scenario_step_cleaned(
+            {
+                'step_type': 'API_BATCH',
+                'method': None,
+                'action_type': None,
+                'action_config': {
+                    'source': {'value': 'context.ops'},
+                    'routing': {
+                        'methods': [
+                            {'entity': 'rule', 'method_id': 42, 'argument_mapping': {}},
+                        ]
+                    },
+                },
+            }
+        )
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned(
+                {
+                    'step_type': 'API_BATCH',
+                    'method': None,
+                    'action_type': None,
+                    'action_config': {'source': {'value': 'x'}, 'routing': {'methods': []}},
+                }
+            )
+        self.assertIn('action_config', ctx.exception.error_dict)
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned(
+                {
+                    'step_type': 'API_BATCH',
+                    'method': None,
+                    'action_type': None,
+                    'action_config': {
+                        'routing': {
+                            'methods': [{'entity': 'rule', 'argument_mapping': {}}],
+                        },
+                    },
+                }
+            )
+        self.assertIn('action_config', ctx.exception.error_dict)
+
+    def test_unknown_step_type(self):
+        from django.core.exceptions import ValidationError
+
+        from service_builder.scenario_step_contracts import validate_scenario_step_cleaned
+
+        with self.assertRaises(ValidationError) as ctx:
+            validate_scenario_step_cleaned({'step_type': 'WEIRD'})
+        self.assertIn('step_type', ctx.exception.error_dict)

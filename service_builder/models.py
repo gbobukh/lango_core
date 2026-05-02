@@ -486,12 +486,13 @@ class ScenarioStep(models.Model):
     STEP_TYPE_CHOICES = [
         ('API_CALL', 'API Call'),
         ('ACTION', 'Action'),
+        ('API_BATCH', 'API Batch'),
     ]
     step_type = models.CharField(
         max_length=20,
         choices=STEP_TYPE_CHOICES,
         default='API_CALL',
-        help_text="Type of step: API Call (HTTP Request) or Action (Data Processing)"
+        help_text="Type of step: API Call (single HTTP request), Action (internal processing), or API Batch (multiple API calls by routing)."
     )
     
     action_type = models.CharField(
@@ -586,6 +587,8 @@ class ScenarioStep(models.Model):
         prefix = f"Step {self.order}: "
         if self.step_type == 'ACTION':
             name = self.get_action_type_display() or 'Unknown Action'
+        elif self.step_type == 'API_BATCH':
+            name = 'API Batch'
         else:
             name = str(self.method) if self.method else 'Unconfigured API Step'
         return f"{prefix}{name}"

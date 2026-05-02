@@ -1,0 +1,21 @@
+<div class="api-batch-config-widget" data-name="{{ widget.name }}">
+    <textarea name="{{ widget.name }}" {% include "django/forms/widgets/attrs.html" %}
+        style="display:none;">{{ widget.value }}</textarea>
+
+    <div class="api-batch-builder" style="display:none; border:1px solid #ddd; padding:10px; border-radius:6px; margin-top:6px;">
+        <div style="margin-bottom:10px;">
+            <strong>API Batch Routing</strong>
+            <p class="help" style="margin:6px 0 0 0;">Configure entity -> method routes and mapping per method.</p>
+        </div>
+        <div class="routes-container"></div>
+        <button type="button" class="button add-route-btn" style="margin-top:8px;">Add more method</button>
+    </div>
+
+    <div class="api-batch-json-fallback" style="margin-top:8px;">
+        <div class="api-batch-json-label" style="font-weight:600; margin-bottom:4px;">Action config (JSON)</div>
+        <button type="button" class="button toggle-json-btn">Show JSON</button>
+        <div class="json-editor-wrap" style="margin-top:6px;">
+            <textarea class="json-editor" rows="10" style="font-family: monospace; width: 100%;"></textarea>
+        </div>
+    </div>
+</div>

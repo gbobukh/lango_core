@@ -72,15 +72,18 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         from django.utils.html import format_html
 
-        from integrations.widgets import ClickToEditWidget as _CTE
         pretty_json_attrs = {'rows': 10, 'style': 'font-family: monospace; width: 100%;'}
-        batch_widget = ApiBatchConfigWidget(attrs=pretty_json_attrs)
-        # Wrap in ClickToEditWidget for existing instances (same rule as apply_click_to_edit).
-        # This restores the pretty read-mode display (pre-wrap monospace) for all step types.
-        if self.instance and self.instance.pk:
-            self.fields['action_config'].widget = _CTE(batch_widget)
+        step_type = None
+        if self.is_bound:
+            key = f'{self.prefix}-step_type' if self.prefix else 'step_type'
+            step_type = self.data.get(key)
+        if not step_type:
+            step_type = self.initial.get('step_type') or getattr(self.instance, 'step_type', None)
+
+        if step_type == 'API_BATCH':
+            self.fields['action_config'].widget = ApiBatchConfigWidget(attrs=pretty_json_attrs)
         else:
-            self.fields['action_config'].widget = batch_widget
+            self.fields['action_config'].widget = PrettyJSONWidget(attrs=pretty_json_attrs)
         
         help_link = format_html(
             ' <a href="#" onclick="window.openContextHelp(); return false;" style="color: #447e9b; font-weight: bold;">[Syntax Help]</a>'
@@ -94,9 +97,23 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        from .scenario_step_contracts import validate_scenario_step_cleaned
+        step_type = cleaned_data.get('step_type')
+        method = cleaned_data.get('method')
+        action_type = cleaned_data.get('action_type')
 
-        validate_scenario_step_cleaned(cleaned_data)
+        if step_type == 'API_CALL' and not method:
+            self.add_error('method', "Service Method is required for API Call steps.")
+            
+        if step_type == 'ACTION' and not action_type:
+            self.add_error('action_type', "Action Type is required for Action steps.")
+
+        if step_type == 'API_BATCH':
+            action_config = cleaned_data.get('action_config') or {}
+            if not isinstance(action_config, dict):
+                self.add_error('action_config', "API Batch config must be a JSON object.")
+            elif not action_config.get('routing', {}).get('methods'):
+                self.add_error('action_config', "API Batch requires at least one route method.")
+        
         return cleaned_data
 
     def clean_error_handlers(self):

@@ -513,6 +513,10 @@ class ScenarioRunner:
 
                     if step.step_type == 'API_CALL':
                         result = self._execute_api_step(step)
+                    elif step.step_type == 'API_BATCH':
+                        from .api_batch import ApiBatchRunner
+                        batch_runner = ApiBatchRunner(self, step)
+                        result = batch_runner.execute()
                     else:
                         action_runner = ActionRunner(self.context, log_func=self.log)
                         result = action_runner.run(step)

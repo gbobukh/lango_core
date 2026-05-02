@@ -80,3 +80,22 @@ class TypedArgumentWidget(forms.Widget):
         context = super().get_context(name, value, attrs)
         context['widget']['value'] = self.format_value(value)
         return context
+
+
+class ApiBatchConfigWidget(forms.Widget):
+    template_name = 'admin/service_builder/widgets/api_batch_config.html'
+
+    class Media:
+        js = ('service_builder/js/api_batch_widget_v2.js',)
+
+    def format_value(self, value):
+        if value is None:
+            return '{}'
+        if isinstance(value, str):
+            return value
+        return json.dumps(value)
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context['widget']['value'] = self.format_value(value)
+        return context

@@ -266,6 +266,27 @@ class GetMethodArgumentsView(LoginRequiredMixin, View):
 
 
 @method_decorator(staff_member_required, name='dispatch')
+class GetMethodsListView(LoginRequiredMixin, View):
+    def get(self, request):
+        qs = ServiceMethod.objects.select_related('service_endpoint').filter(validation_status__in=['VALID', 'TEST'])
+        if not request.user.is_superuser:
+            qs = qs.filter(visible_to=request.user).distinct()
+
+        methods = []
+        for method in qs.order_by('name'):
+            endpoint = method.service_endpoint
+            endpoint_label = ""
+            if endpoint is not None:
+                endpoint_label = f"{endpoint.method} {endpoint.endpoint}"
+            methods.append({
+                'id': method.pk,
+                'name': method.name,
+                'label': f"{method.name} ({endpoint_label})" if endpoint_label else method.name,
+            })
+        return JsonResponse({'methods': methods})
+
+
+@method_decorator(staff_member_required, name='dispatch')
 class GetScenarioArgumentsView(LoginRequiredMixin, View):
     def get(self, request, scenario_id):
         try:

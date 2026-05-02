@@ -1,0 +1,263 @@
+(function () {
+    function get$() {
+        if (typeof django !== "undefined" && typeof django.jQuery === "function") return django.jQuery;
+        if (typeof jQuery === "function") return jQuery;
+        if (typeof window !== "undefined" && typeof window.jQuery === "function") return window.jQuery;
+        return null;
+    }
+
+    function parseJsonSafe(raw, fallback) {
+        try { return JSON.parse(raw); } catch (_e) { return fallback; }
+    }
+
+    function toPrettyJson(value) {
+        if (value == null) return "{}";
+        if (typeof value === "string") {
+            var parsed = parseJsonSafe(value, null);
+            if (parsed && typeof parsed === "object") return JSON.stringify(parsed, null, 2);
+            return value;
+        }
+        try { return JSON.stringify(value, null, 2); } catch (_e) { return "{}"; }
+    }
+
+    function makeDefaultConfig() {
+        return {
+            version: "1.0",
+            source: { type: "context_path", value: "diff.0.changes" },
+            iterate_as: "op",
+            path_graph: {
+                root: "item",
+                entity_nodes: ["rules", "paths", "offers"],
+                entity_alias: { rules: "rule", paths: "path", offers: "offer" },
+                field_filters: ["enabled"]
+            },
+            routing: { by: "op._leaf_entity", methods: [], default: null },
+            index_to_id: {},
+            execution: { mode: "sequential", continue_on_error: true, max_ops: 500, dry_run: false },
+            error_policy: {
+                retry: { max_attempts: 2, backoff_ms: 300 },
+                on_route_missing: "skip",
+                on_mapping_error: "fail_op",
+                on_http_error: "fail_op"
+            },
+            report: { output_variable: "batch_report", include_requests: true, include_responses: true, truncate_response_body: 2000 }
+        };
+    }
+
+    var methodsCache = null;
+
+    function fetchMethods($, cb) {
+        if (Array.isArray(methodsCache)) {
+            cb(methodsCache);
+            return;
+        }
+        $.ajax({
+            url: "/admin/service_builder/scenario/api/methods/",
+            method: "GET",
+            success: function (data) {
+                methodsCache = (data && data.methods) ? data.methods : [];
+                cb(methodsCache);
+            },
+            error: function () {
+                methodsCache = [];
+                cb(methodsCache);
+            }
+        });
+    }
+
+    function initWidget($, $widget) {
+        if ($widget.data("api-batch-widget-init")) return;
+        $widget.data("api-batch-widget-init", true);
+
+        var $textarea = $widget.find('textarea[name]').first();
+        var $builder = $widget.find(".api-batch-builder");
+        var $routes = $widget.find(".routes-container");
+        var $toggleJson = $widget.find(".toggle-json-btn");
+        var $jsonWrap = $widget.find(".json-editor-wrap");
+        var $jsonEditor = $widget.find(".json-editor");
+        var $row = $widget.closest(".inline-related");
+
+        var config = parseJsonSafe(($textarea.val() || "{}").trim(), {});
+        if (!config || typeof config !== "object") config = {};
+        var methods = [];
+
+        function ensureBatchConfig() {
+            var d = makeDefaultConfig();
+            if (!config.version) config.version = d.version;
+            if (!config.source) config.source = d.source;
+            if (!config.iterate_as) config.iterate_as = d.iterate_as;
+            if (!config.path_graph) config.path_graph = d.path_graph;
+            if (!config.routing) config.routing = d.routing;
+            if (!Array.isArray(config.routing.methods)) config.routing.methods = [];
+            if (!config.index_to_id) config.index_to_id = d.index_to_id;
+            if (!config.execution) config.execution = d.execution;
+            if (!config.error_policy) config.error_policy = d.error_policy;
+            if (!config.report) config.report = d.report;
+        }
+
+        function syncHidden() {
+            var pretty = toPrettyJson(config || {});
+            $textarea.val(pretty).trigger("change");
+            $jsonEditor.val(pretty);
+        }
+
+        function fetchMethodArgs(methodId, cb) {
+            if (!methodId) return cb([]);
+            $.ajax({
+                url: "/admin/service_builder/scenario/api/method-arguments/" + methodId + "/",
+                method: "GET",
+                success: function (data) { cb(data.arguments || []); },
+                error: function () { cb([]); }
+            });
+        }
+
+        function saveRoute(index, route, $entity, $method) {
+            route.entity = ($entity.val() || "").trim();
+            var mid = $method.val();
+            route.method_id = mid ? parseInt(mid, 10) : null;
+            route.method_ref = route.method_id ? ("method://service_builder." + (($method.find("option:selected").text() || "").trim())) : null;
+            config.routing.methods[index] = route;
+            syncHidden();
+        }
+
+        function renderRouteCard(route, index) {
+            if (!route.argument_mapping) route.argument_mapping = {};
+            var selectedMethod = route.method_id ? String(route.method_id) : "";
+            var $card = $('<div class="route-card" style="border:1px solid #eee; padding:8px; margin-bottom:8px; border-radius:4px;"></div>');
+            var $head = $('<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;"></div>');
+            var $entity = $('<input type="text" placeholder="entity key (e.g. offer)" style="width:170px;" />').val(route.entity || "");
+            var $method = $('<select style="min-width:320px;"></select>');
+            $method.append($("<option></option>").attr("value", "").text("Select method..."));
+            methods.forEach(function (opt) {
+                var idStr = String(opt.id);
+                var $opt = $("<option></option>").attr("value", idStr).text(opt.label || opt.name || idStr);
+                if (idStr === selectedMethod) $opt.prop("selected", true);
+                $method.append($opt);
+            });
+            var $remove = $('<button type="button" class="button">Remove</button>');
+            $head.append($('<label style="font-weight:600;">Entity</label>')).append($entity);
+            $head.append($('<label style="font-weight:600;">Method</label>')).append($method);
+            $head.append($remove);
+            $card.append($head);
+
+            var $table = $('<table style="width:100%; border-collapse: collapse;"><thead><tr><th style="text-align:left; width:35%; border-bottom:1px solid #ddd; padding:4px;">Method Arg</th><th style="text-align:left; border-bottom:1px solid #ddd; padding:4px;">Template Mapping</th></tr></thead><tbody></tbody></table>');
+            var $tbody = $table.find("tbody");
+            $card.append($table);
+
+            function renderArgs(args) {
+                $tbody.empty();
+                (args || []).forEach(function (arg) {
+                    var $tr = $("<tr></tr>");
+                    var $name = $("<td style='padding:4px; border-bottom:1px solid #f1f1f1;'></td>").text(arg);
+                    var $input = $("<textarea rows='1' style='width:100%; min-height:30px;'></textarea>").val(route.argument_mapping[arg] || "");
+                    $input.on("change keyup", function () {
+                        var v = $(this).val();
+                        if (v) route.argument_mapping[arg] = v; else delete route.argument_mapping[arg];
+                        saveRoute(index, route, $entity, $method);
+                    });
+                    $tr.append($name).append($("<td style='padding:4px; border-bottom:1px solid #f1f1f1;'></td>").append($input));
+                    $tbody.append($tr);
+                });
+                Object.keys(route.argument_mapping).forEach(function (k) {
+                    if ((args || []).indexOf(k) === -1) delete route.argument_mapping[k];
+                });
+                saveRoute(index, route, $entity, $method);
+            }
+
+            $entity.on("change keyup", function () { saveRoute(index, route, $entity, $method); });
+            $method.on("change", function () {
+                route.argument_mapping = {};
+                saveRoute(index, route, $entity, $method);
+                fetchMethodArgs($method.val(), renderArgs);
+            });
+            $remove.on("click", function () {
+                config.routing.methods.splice(index, 1);
+                renderRoutes();
+                syncHidden();
+            });
+
+            fetchMethodArgs($method.val(), renderArgs);
+            return $card;
+        }
+
+        function renderRoutes() {
+            ensureBatchConfig();
+            $routes.empty();
+            if (!methods.length) {
+                $routes.append('<p class="help">No methods available. Ensure Service Methods are VALID/TEST and visible to current user.</p>');
+                return;
+            }
+            config.routing.methods.forEach(function (route, index) {
+                $routes.append(renderRouteCard(route, index));
+            });
+        }
+
+        function updateVisibility() {
+            var stepType = ($row.find('select[id$="-step_type"]').val() || "").trim();
+            var isBatch = stepType === "API_BATCH";
+            $builder.toggle(isBatch);
+            $widget.find(".api-batch-json-label").toggle(!isBatch);
+            $toggleJson.toggle(isBatch);
+            if (isBatch) {
+                ensureBatchConfig();
+                fetchMethods($, function (loadedMethods) {
+                    methods = loadedMethods || [];
+                    renderRoutes();
+                    syncHidden();
+                    $jsonWrap.hide();
+                    $toggleJson.text("Show JSON");
+                });
+            } else {
+                $jsonWrap.show();
+                $jsonEditor.val(toPrettyJson($textarea.val() || "{}"));
+            }
+        }
+
+        $widget.find(".add-route-btn").on("click", function () {
+            ensureBatchConfig();
+            config.routing.methods.push({ entity: "", method_id: null, method_ref: null, argument_mapping: {} });
+            renderRoutes();
+            syncHidden();
+        });
+        $toggleJson.on("click", function () {
+            var shown = $jsonWrap.is(":visible");
+            $jsonWrap.toggle(!shown);
+            $toggleJson.text(shown ? "Show JSON" : "Hide JSON");
+        });
+        $jsonEditor.on("change", function () {
+            var parsed = parseJsonSafe($jsonEditor.val(), null);
+            if (!parsed || typeof parsed !== "object") return;
+            config = parsed;
+            if (!config.routing) config.routing = { by: "op._leaf_entity", methods: [] };
+            if (!Array.isArray(config.routing.methods)) config.routing.methods = [];
+            renderRoutes();
+            syncHidden();
+        });
+        $row.on("change", 'select[id$="-step_type"]', updateVisibility);
+
+        updateVisibility();
+    }
+
+    function initAll($) {
+        if (window.__apiBatchWidgetV2Initialized) return;
+        window.__apiBatchWidgetV2Initialized = true;
+
+        $(document).ready(function () {
+            $(".api-batch-config-widget").each(function () { initWidget($, $(this)); });
+            $(document).on("formset:added", function (_event, row) {
+                $(row).find(".api-batch-config-widget").each(function () { initWidget($, $(this)); });
+            });
+        });
+    }
+
+    var $ = get$();
+    if ($) {
+        initAll($);
+        return;
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+        var delayed$ = get$();
+        if (delayed$) initAll(delayed$);
+        else console.error("api_batch_widget_v2: jQuery not available.");
+    });
+})();

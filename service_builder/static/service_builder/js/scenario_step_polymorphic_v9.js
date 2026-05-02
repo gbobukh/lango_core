@@ -1,5 +1,19 @@
-(function ($) {
-    $(document).ready(function () {
+(function () {
+    function get$() {
+        if (typeof django !== 'undefined' && typeof django.jQuery === 'function') {
+            return django.jQuery;
+        }
+        if (typeof jQuery === 'function') {
+            return jQuery;
+        }
+        if (typeof window !== 'undefined' && typeof window.jQuery === 'function') {
+            return window.jQuery;
+        }
+        return null;
+    }
+
+    function init($) {
+        $(document).ready(function () {
 
         // --- PART 1: Hiding Fields logic (original) ---
         function toggleFields(row) {
@@ -27,6 +41,14 @@
                 iteratorVarRow.show(); // Show iterator for Action (e.g. FLATTEN_COLLECTION over black_list)
 
                 actionTypeRow.show();
+                actionConfigRow.show();
+            } else if (stepType === 'API_BATCH') {
+                methodRow.hide();
+                argMappingRow.hide();
+                authVarRow.show();
+                iteratorVarRow.show();
+
+                actionTypeRow.hide();
                 actionConfigRow.show();
             } else {
                 // Default or API_CALL
@@ -110,6 +132,7 @@
         function addInsertVarHelper(row) {
             var textarea = row.find('textarea[id$="-action_config"]');
             if (!textarea.length) return;
+            if (textarea.closest('.api-batch-config-widget').length) return;
 
             // Check if already added
             if (textarea.data('has-var-helper')) return;
@@ -360,5 +383,20 @@
             addInsertVarHelper($row);
         });
 
-    });
-})(django.jQuery);
+        });
+    }
+
+    var $ = get$();
+    if (!$) {
+        document.addEventListener('DOMContentLoaded', function () {
+            var delayed$ = get$();
+            if (delayed$) {
+                init(delayed$);
+            } else {
+                console.error('scenario_step_polymorphic_v9: jQuery not available; script skipped.');
+            }
+        });
+        return;
+    }
+    init($);
+})();
