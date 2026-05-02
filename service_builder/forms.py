@@ -65,8 +65,6 @@ class ScenarioForm(ClickToEditFormMixin, TestStatusFormMixin, forms.ModelForm):
             'return_variables': TypedArgumentWidget(),
         }
 
-from .widgets import ArgumentMappingWidget, PrettyJSONWidget
-
 class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -105,13 +103,8 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
     class Meta:
         model = ScenarioStep
         fields = '__all__'
-        widgets = {
-            'argument_mapping': ArgumentMappingWidget(),
-            'error_handlers': PrettyJSONWidget(attrs={'rows': 8, 'style': 'font-family: monospace; width: 100%;', 'placeholder': '[{"status_codes": [404], "body_match": {"error.code": "NotFoundError"}, "action": "skip"}]'}),
-            'response_modification': forms.Textarea(attrs={'rows': 3, 'placeholder': '{"json_path": "context_var"}'}),
-            'context_extraction': forms.Textarea(attrs={'rows': 3, 'placeholder': '{"var_name": "expression"}'}),
-            'success_condition': forms.Textarea(attrs={'rows': 2, 'placeholder': "result['status'] == 'success'"}),
-        }
+        # Widgets for ScenarioStep are set in ScenarioStepInline.formfield_for_dbfield only when
+        # each field participates in the form (unlocked scenarios and non-swapped columns).
 
 from .models import BusinessAction
 
@@ -120,6 +113,9 @@ class BusinessActionForm(ClickToEditFormMixin, TestStatusFormMixin, forms.ModelF
     class Meta:
         model = BusinessAction
         fields = '__all__'
+
+
+from .widgets import PrettyJSONWidget
 
 
 class ActionConfigLibraryForm(ClickToEditFormMixin, forms.ModelForm):

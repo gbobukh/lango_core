@@ -19,7 +19,7 @@ from .forms import ActionConfigLibraryForm, ServiceEndpointForm, ServiceMethodFo
 
 
 
-from .widgets import ArgumentMappingWidget
+from .widgets import ApiBatchConfigWidget, ArgumentMappingWidget, PrettyJSONWidget
 from integrations.models import Tracker
 from integrations.widgets import KeyDefinitionsWidget
 
@@ -597,14 +597,34 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
             rebuilt.append((title, copied))
         return rebuilt
 
-    # Matches former ScenarioStepForm Meta PrettyJSONWidget sizing; batch widget for API_BATCH UX.
+    # Scenario step widgets: only fields present on the form (see LOCKED_JSON_FIELDS swap) get customized.
     ACTION_CONFIG_WIDGET_ATTRS = {'rows': 10, 'style': 'font-family: monospace; width: 100%;'}
+    ERROR_HANDLERS_WIDGET_ATTRS = {
+        'rows': 8,
+        'style': 'font-family: monospace; width: 100%;',
+        'placeholder': '[{"status_codes": [404], "body_match": {"error.code": "NotFoundError"}, "action": "skip"}]',
+    }
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
-        if db_field.name == 'action_config':
-            from .widgets import ApiBatchConfigWidget
-
+        name = db_field.name
+        if name == 'argument_mapping':
+            kwargs['widget'] = ArgumentMappingWidget()
+        elif name == 'action_config':
             kwargs['widget'] = ApiBatchConfigWidget(attrs=dict(self.ACTION_CONFIG_WIDGET_ATTRS))
+        elif name == 'error_handlers':
+            kwargs['widget'] = PrettyJSONWidget(attrs=dict(self.ERROR_HANDLERS_WIDGET_ATTRS))
+        elif name == 'response_modification':
+            kwargs['widget'] = forms.Textarea(
+                attrs={'rows': 3, 'placeholder': '{"json_path": "context_var"}'}
+            )
+        elif name == 'context_extraction':
+            kwargs['widget'] = forms.Textarea(
+                attrs={'rows': 3, 'placeholder': '{"var_name": "expression"}'}
+            )
+        elif name == 'success_condition':
+            kwargs['widget'] = forms.Textarea(
+                attrs={'rows': 2, 'placeholder': "result['status'] == 'success'"}
+            )
         return super().formfield_for_dbfield(db_field, request, **kwargs)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
