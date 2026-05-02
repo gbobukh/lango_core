@@ -65,7 +65,7 @@ class ScenarioForm(ClickToEditFormMixin, TestStatusFormMixin, forms.ModelForm):
             'return_variables': TypedArgumentWidget(),
         }
 
-from .widgets import ArgumentMappingWidget, PrettyJSONWidget, ApiBatchConfigWidget
+from .widgets import ArgumentMappingWidget, PrettyJSONWidget
 
 class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
@@ -73,15 +73,12 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
         from django.utils.html import format_html
 
         from integrations.widgets import ClickToEditWidget as _CTE
-        pretty_json_attrs = {'rows': 10, 'style': 'font-family: monospace; width: 100%;'}
-        batch_widget = ApiBatchConfigWidget(attrs=pretty_json_attrs)
-        # Wrap in ClickToEditWidget for existing instances (same rule as apply_click_to_edit).
-        # This restores the pretty read-mode display (pre-wrap monospace) for all step types.
-        if self.instance and self.instance.pk:
-            self.fields['action_config'].widget = _CTE(batch_widget)
-        else:
-            self.fields['action_config'].widget = batch_widget
-        
+        # Base widget for action_config is chosen in ScenarioStepInline.formfield_for_dbfield
+        # so locked scenarios (field swapped for *_pretty) never touch this field.
+        if 'action_config' in self.fields and self.instance and self.instance.pk:
+            inner = self.fields['action_config'].widget
+            self.fields['action_config'].widget = _CTE(inner)
+
         help_link = format_html(
             ' <a href="#" onclick="window.openContextHelp(); return false;" style="color: #447e9b; font-weight: bold;">[Syntax Help]</a>'
         )
@@ -110,7 +107,6 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
         fields = '__all__'
         widgets = {
             'argument_mapping': ArgumentMappingWidget(),
-            'action_config': PrettyJSONWidget(attrs={'rows': 10, 'style': 'font-family: monospace; width: 100%;'}),
             'error_handlers': PrettyJSONWidget(attrs={'rows': 8, 'style': 'font-family: monospace; width: 100%;', 'placeholder': '[{"status_codes": [404], "body_match": {"error.code": "NotFoundError"}, "action": "skip"}]'}),
             'response_modification': forms.Textarea(attrs={'rows': 3, 'placeholder': '{"json_path": "context_var"}'}),
             'context_extraction': forms.Textarea(attrs={'rows': 3, 'placeholder': '{"var_name": "expression"}'}),

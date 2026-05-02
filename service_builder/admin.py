@@ -596,7 +596,17 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
             copied['fields'] = self._replace_locked_json_fields(copied.get('fields', ()))
             rebuilt.append((title, copied))
         return rebuilt
-    
+
+    # Matches former ScenarioStepForm Meta PrettyJSONWidget sizing; batch widget for API_BATCH UX.
+    ACTION_CONFIG_WIDGET_ATTRS = {'rows': 10, 'style': 'font-family: monospace; width: 100%;'}
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'action_config':
+            from .widgets import ApiBatchConfigWidget
+
+            kwargs['widget'] = ApiBatchConfigWidget(attrs=dict(self.ACTION_CONFIG_WIDGET_ATTRS))
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "method":
             from .models import ServiceMethod
