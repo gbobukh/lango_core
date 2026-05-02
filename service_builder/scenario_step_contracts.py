@@ -18,6 +18,30 @@ from .models import SCENARIO_ACTION_TYPE_CHOICES
 
 ACTION_TYPE_CODES = frozenset(code for code, _label in SCENARIO_ACTION_TYPE_CHOICES)
 
+# Admin form visibility (stacked inline must match validation & Runtime contracts).
+_SCENARIO_STEP_FIELDS_COMMON = frozenset(
+    {
+        'is_active',
+        'order',
+        'step_type',
+        'iterator_variable',
+        'output_variable_name',
+        'response_modification',
+        'error_handlers',
+        'context_extraction',
+        'success_condition',
+        'condition_error_message',
+    }
+)
+SCENARIO_STEP_FORM_FIELDS_BY_TYPE: dict[str, frozenset[str]] = {
+    'API_CALL': _SCENARIO_STEP_FIELDS_COMMON
+    | frozenset({'method', 'argument_mapping', 'auth_context_variable'}),
+    'ACTION': _SCENARIO_STEP_FIELDS_COMMON
+    | frozenset({'action_type', 'action_config'}),
+    'API_BATCH': _SCENARIO_STEP_FIELDS_COMMON
+    | frozenset({'action_config', 'auth_context_variable'}),
+}
+
 
 def validate_scenario_step_cleaned(cleaned_data: dict) -> None:
     """

@@ -28,7 +28,8 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils.text import capfirst
-from django.contrib.admin.utils import NestedObjects
+from django.contrib.admin import helpers as admin_helpers
+from django.contrib.admin.utils import NestedObjects, flatten_fieldsets
 from .views import TestEndpointView, GetMethodArgumentsView, GetMethodsListView, GetScenarioArgumentsView, GetScenarioDetailsView, ResolveActionVariantView, GetBusinessActionArgumentsView
 from .api import ModelChoicesView
 
@@ -398,7 +399,7 @@ class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
 
 
 from .models import Scenario, ScenarioStep
-from .forms import ScenarioForm, ScenarioStepForm
+from .forms import ScenarioForm, ScenarioStepForm, effective_scenario_step_for_form
 
 from django.forms.models import BaseInlineFormSet
 from django.core.exceptions import ValidationError
@@ -495,6 +496,7 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
     form = ScenarioStepForm
     formset = ScenarioStepFormSet
     extra = 0
+    template = 'admin/edit_inline/scenario_step_stacked.html'
     autocomplete_fields = ('method',)
     # Group fields: Top row (Order, Method, Output), Bottom row (Mappings)
     fieldsets = (
@@ -636,6 +638,104 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
             kwargs["queryset"] = qs
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+
+def _scenario_step_fieldsets_for_step_type(fieldsets, step_type):
+    """Drop field rows not allowed for ``step_type`` (locked *_pretty mapped to logical field)."""
+    from .scenario_step_contracts import SCENARIO_STEP_FORM_FIELDS_BY_TYPE
+
+    allowed = SCENARIO_STEP_FORM_FIELDS_BY_TYPE.get(step_type)
+    if allowed is None:
+        allowed = SCENARIO_STEP_FORM_FIELDS_BY_TYPE['API_CALL']
+    pretty_inv = {v: k for k, v in ScenarioStepInline.LOCKED_JSON_FIELDS.items()}
+
+    def logical_allowed(name):
+        logical = pretty_inv.get(name, name)
+        return logical in allowed
+
+    def filter_slot(slot):
+        if isinstance(slot, (list, tuple)):
+            kept = tuple(f for f in slot if logical_allowed(f))
+            if not kept:
+                return None
+            if len(kept) == 1:
+                return kept[0]
+            return kept
+        if logical_allowed(slot):
+            return slot
+        return None
+
+    rebuilt = []
+    for title, opts in fieldsets:
+        raw_fields = opts.get('fields', ())
+        next_fields = []
+        for slot in raw_fields:
+            filtered = filter_slot(slot)
+            if filtered is not None:
+                next_fields.append(filtered)
+        if next_fields:
+            new_opts = dict(opts)
+            new_opts['fields'] = tuple(next_fields)
+            rebuilt.append((title, new_opts))
+    return rebuilt
+
+
+class ScenarioStepInlineAdminFormSet(admin_helpers.InlineAdminFormSet):
+    """Per-row fieldsets filtered by ScenarioStep.step_type while hidden fields preserve POST data."""
+
+    def __iter__(self):
+        if self.has_change_permission:
+            readonly_for_editing = self.readonly_fields
+        else:
+            readonly_for_editing = tuple(self.readonly_fields) + tuple(
+                flatten_fieldsets(self.fieldsets)
+            )
+
+        queryset = list(self.formset.get_queryset())
+        for form, original in zip(self.formset.initial_forms, queryset):
+            view_on_site_url = self.opts.get_view_on_site_url(original)
+            st = effective_scenario_step_for_form(form)
+            row_fieldsets = _scenario_step_fieldsets_for_step_type(self.fieldsets, st)
+            yield admin_helpers.InlineAdminForm(
+                self.formset,
+                form,
+                row_fieldsets,
+                self.prepopulated_fields,
+                original,
+                readonly_for_editing,
+                model_admin=self.opts,
+                view_on_site_url=view_on_site_url,
+            )
+
+        for form in self.formset.extra_forms:
+            st = effective_scenario_step_for_form(form)
+            row_fieldsets = _scenario_step_fieldsets_for_step_type(self.fieldsets, st)
+            yield admin_helpers.InlineAdminForm(
+                self.formset,
+                form,
+                row_fieldsets,
+                self.prepopulated_fields,
+                None,
+                self.readonly_fields,
+                model_admin=self.opts,
+                view_on_site_url=None,
+            )
+
+        if self.has_add_permission:
+            empty = self.formset.empty_form
+            st = effective_scenario_step_for_form(empty)
+            row_fieldsets = _scenario_step_fieldsets_for_step_type(self.fieldsets, st)
+            yield admin_helpers.InlineAdminForm(
+                self.formset,
+                empty,
+                row_fieldsets,
+                self.prepopulated_fields,
+                None,
+                self.readonly_fields,
+                model_admin=self.opts,
+                view_on_site_url=None,
+            )
+
+
 @admin.register(ActionConfigLibrary)
 class ActionConfigLibraryAdmin(admin.ModelAdmin):
     form = ActionConfigLibraryForm
@@ -757,6 +857,46 @@ class ScenarioAdmin(LifecycleAdminMixin, admin.ModelAdmin):
             self.message_user(request, f"Scenario saved. Warning: Unused scenario arguments: {', '.join(unused_args)}", level='WARNING')
         else:
              pass
+
+    def get_inline_formsets(self, request, formsets, inline_instances, obj=None):
+        can_edit_parent = (
+            self.has_change_permission(request, obj)
+            if obj
+            else self.has_add_permission(request)
+        )
+        inline_admin_formsets = []
+        for inline, formset in zip(inline_instances, formsets):
+            fieldsets = list(inline.get_fieldsets(request, obj))
+            readonly = list(inline.get_readonly_fields(request, obj))
+            if can_edit_parent:
+                has_add_permission = inline.has_add_permission(request, obj)
+                has_change_permission = inline.has_change_permission(request, obj)
+                has_delete_permission = inline.has_delete_permission(request, obj)
+            else:
+                has_add_permission = has_change_permission = has_delete_permission = False
+                formset.extra = formset.max_num = 0
+            has_view_permission = inline.has_view_permission(request, obj)
+            prepopulated = dict(inline.get_prepopulated_fields(request, obj))
+            helper_cls = (
+                ScenarioStepInlineAdminFormSet
+                if isinstance(inline, ScenarioStepInline)
+                else admin_helpers.InlineAdminFormSet
+            )
+            inline_admin_formsets.append(
+                helper_cls(
+                    inline,
+                    formset,
+                    fieldsets,
+                    prepopulated,
+                    readonly,
+                    model_admin=self,
+                    has_add_permission=has_add_permission,
+                    has_change_permission=has_change_permission,
+                    has_delete_permission=has_delete_permission,
+                    has_view_permission=has_view_permission,
+                )
+            )
+        return inline_admin_formsets
 
 from .models import Workflow, WorkflowStep, BusinessAction, BusinessActionVariant
 from .forms import ScenarioStepForm 

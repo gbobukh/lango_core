@@ -1,8 +1,10 @@
 from django import forms
+from django.forms.formsets import DELETION_FIELD_NAME
 from integrations.forms import ClickToEditFormMixin
 from integrations.widgets import ClickToEditWidget
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from .models import ActionConfigLibrary, ServiceEndpoint, ServiceMethod, Scenario, ScenarioStep
+from .scenario_step_contracts import SCENARIO_STEP_FORM_FIELDS_BY_TYPE
 
 class TestStatusFormMixin(forms.Form):
     mark_as_test = forms.BooleanField(
@@ -65,15 +67,55 @@ class ScenarioForm(ClickToEditFormMixin, TestStatusFormMixin, forms.ModelForm):
             'return_variables': TypedArgumentWidget(),
         }
 
+
+def effective_scenario_step_for_form(form) -> str:
+    """Resolve step_type for admin row (POST wins; else DB row; default API_CALL)."""
+    allowed = frozenset(SCENARIO_STEP_FORM_FIELDS_BY_TYPE)
+    if form.is_bound:
+        raw = form.data.get(form.add_prefix('step_type'))
+        if raw in allowed:
+            return raw
+    if getattr(form.instance, 'pk', None):
+        st = getattr(form.instance, 'step_type', None) or 'API_CALL'
+        return st if st in allowed else 'API_CALL'
+    init = form.initial.get('step_type')
+    if init in allowed:
+        return init
+    st = getattr(form.instance, 'step_type', None) or 'API_CALL'
+    return st if st in allowed else 'API_CALL'
+
+
+def _apply_step_type_widgets(form):
+    """Non-applicable ScenarioStep inputs become HiddenInput (still POST via inline template loop)."""
+    step_type_eff = effective_scenario_step_for_form(form)
+    allowed = SCENARIO_STEP_FORM_FIELDS_BY_TYPE.get(step_type_eff)
+    if allowed is None:
+        allowed = SCENARIO_STEP_FORM_FIELDS_BY_TYPE['API_CALL']
+    skip_admin = frozenset({'id', DELETION_FIELD_NAME})
+    for name, field in form.fields.items():
+        if name in skip_admin:
+            continue
+        if name not in allowed:
+            field.widget = forms.HiddenInput()
+            field.required = False
+
+
 class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _apply_step_type_widgets(self)
+
         from django.utils.html import format_html
 
         from integrations.widgets import ClickToEditWidget as _CTE
         # Base widget for action_config is chosen in ScenarioStepInline.formfield_for_dbfield
         # so locked scenarios (field swapped for *_pretty) never touch this field.
-        if 'action_config' in self.fields and self.instance and self.instance.pk:
+        if (
+            'action_config' in self.fields
+            and self.instance
+            and self.instance.pk
+            and not getattr(self.fields['action_config'].widget, 'is_hidden', False)
+        ):
             inner = self.fields['action_config'].widget
             self.fields['action_config'].widget = _CTE(inner)
 
