@@ -75,7 +75,7 @@ This section complements the migration and Gunicorn reload runbooks above. It re
 
 ### 1) Static files in production (not only “reload Gunicorn”)
 
-- `STATIC_URL` is `/static/`; `STATIC_ROOT` is `/var/www/lango_core_static/` (see `lango_core/settings.py`). Collected assets are served from that directory (see `lango_core/urls.py` with `static(..., document_root=settings.STATIC_ROOT)` when `DEBUG` is on).
+- `STATIC_URL` is `/static/`; `STATIC_ROOT` is `/var/www/lango_core_static/` (see `lango_core/settings/base.py`). Collected assets are served from that directory (see `lango_core/urls.py` with `static(..., document_root=settings.STATIC_ROOT)` when `DEBUG` is on).
 - After changing files under app `static/` trees (for example `service_builder/static/...`), you must run **`collectstatic`** so the updated files are copied into `STATIC_ROOT`.
 - **Reloading Gunicorn does not replace `collectstatic`.** If JS/CSS changed but was not collected, the browser will keep loading old or missing files from `STATIC_ROOT`.
 - Quick sanity check after collect:

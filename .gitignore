@@ -1,4 +1,5 @@
 # --- Secrets / local env ---
+# .env holds secrets and machine-only flags (e.g. LANGO_USE_LOCAL_SETTINGS). Never commit.
 .env
 .env.*
 !.env.example

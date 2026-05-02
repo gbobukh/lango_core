@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from django import forms
+from django.conf import settings
 from django.forms.widgets import Widget, TextInput, NumberInput, EmailInput
 from .models import ApiAuthType, Tracker, ApiAuthID, PartnerAccount, PartnerAccountType, PartnerAccountTrackerIdentifier, SystemConfig
 from .widgets import ClickToEditWidget, KeyDefinitionsWidget, CredentialsInputWidget
@@ -14,26 +17,40 @@ class ClickToEditFormMixin:
         self.apply_click_to_edit()
 
     def apply_click_to_edit(self):
-        with open('/root/lango_core/debug_log.txt', 'a') as f:
+        raw_log = getattr(settings, 'CLICK_TO_EDIT_DEBUG_LOG_PATH', None)
+        log_fp = None
+        try:
+            if raw_log is not None:
+                log_path = Path(raw_log)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_fp = open(log_path, 'a', encoding='utf-8')
+
+            def log(line):
+                if log_fp is not None:
+                    log_fp.write(line)
+
             # Only apply if editing an existing instance
             if not hasattr(self, 'instance') or not self.instance.pk:
-                f.write(f"ClickToEdit: Skipping {self.__class__.__name__} (No instance or PK)\n")
+                log(f"ClickToEdit: Skipping {self.__class__.__name__} (No instance or PK)\n")
                 return
 
-            f.write(f"ClickToEdit: Applying to {self.__class__.__name__}\n")
+            log(f"ClickToEdit: Applying to {self.__class__.__name__}\n")
             for name, field in self.fields.items():
                 # Skip fields that already have custom complex widgets or shouldn't be wrapped
                 # Also skip 'visible_to' as requested (Access Control has its own collapse logic)
                 if name == 'visible_to' or isinstance(field.widget, (KeyDefinitionsWidget, CredentialsInputWidget, forms.CheckboxSelectMultiple)):
-                    f.write(f"  Skipping field {name} (Widget: {field.widget.__class__.__name__})\n")
+                    log(f"  Skipping field {name} (Widget: {field.widget.__class__.__name__})\n")
                     continue
-                    
+
                 # Wrap standard input widgets, textareas, and Select widgets (including Admin wrappers and M2M)
                 if isinstance(field.widget, (TextInput, NumberInput, EmailInput, forms.Textarea, forms.Select, forms.SelectMultiple, RelatedFieldWidgetWrapper)):
-                    f.write(f"  Wrapping field {name} (Widget: {field.widget.__class__.__name__})\n")
+                    log(f"  Wrapping field {name} (Widget: {field.widget.__class__.__name__})\n")
                     field.widget = ClickToEditWidget(field.widget)
                 else:
-                    f.write(f"  Ignored field {name} (Widget: {field.widget.__class__.__name__})\n")
+                    log(f"  Ignored field {name} (Widget: {field.widget.__class__.__name__})\n")
+        finally:
+            if log_fp is not None:
+                log_fp.close()
 
 class ApiAuthTypeForm(ClickToEditFormMixin, forms.ModelForm):
     class Meta:

@@ -32,7 +32,7 @@ python manage.py collectstatic --noinput
 
 ## Environment
 
-Copy `.env.example` to `.env`. Variables are loaded from `.env` via `python-dotenv` in `lango_core/settings.py`.
+Copy `.env.example` to `.env`. Variables are loaded from `.env` via `python-dotenv` in `lango_core/settings/` (`base.py`). Set `LANGO_USE_LOCAL_SETTINGS=1` locally to enable `local.py` overlays (paths, optional dev flags).
 
 - **`SECRET_KEY`**: set in any non-local / shared environment.
 - **`DEBUG`**: `0` for production; `1` (default) enables local-friendly SSL/cookie and CSRF behavior.
