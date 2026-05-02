@@ -10,34 +10,69 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / '.env')
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == '':
+        return default
+    return raw.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _env_csv(name: str) -> list[str]:
+    raw = os.environ.get(name, '')
+    return [item.strip() for item in raw.split(',') if item.strip()]
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ay^4ut=ue_6+u)isq@qb(8w#x9ruol9=k7pmz#f9pqog&#*5dj'
+# Override with SECRET_KEY in .env for any deployed or shared environment.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-ay^4ut=ue_6+u)isq@qb(8w#x9ruol9=k7pmz#f9pqog&#*5dj',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool('DEBUG', True)
 
-ALLOWED_HOSTS = ['*', 'core.lango.media', 'www.core.lango.media']  # Разрешаем доступ с любых хостов для разработки
+_allowed = _env_csv('ALLOWED_HOSTS')
+if _allowed:
+    ALLOWED_HOSTS = _allowed
+else:
+    ALLOWED_HOSTS = ['*', 'core.lango.media', 'www.core.lango.media']
 
-# Настройки для работы с Cloudflare
 # Настройки для работы с Cloudflare
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = True
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+# Local DEBUG: no HTTPS redirect by default. Production (DEBUG off): redirect unless SECURE_SSL_REDIRECT=0
+if DEBUG:
+    SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', False)
+else:
+    SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', True)
+
+if DEBUG:
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False
+else:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = False  # HTTP через Cloudflare (как раньше)
+
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_NAME = 'csrftoken'
-CSRF_TRUSTED_ORIGINS = [
+
+_CSRF_TRUSTED_ORIGINS = [
     'https://core.lango.media',
     'http://core.lango.media',
     'https://www.core.lango.media',
@@ -46,12 +81,22 @@ CSRF_TRUSTED_ORIGINS = [
     'http://*.core.lango.media',
     'https://*.lango.media',
     'http://*.lango.media',
-    # Локальные адреса для разработки
     'https://91.99.239.93:8002',
     'http://91.99.239.93:8002',
     'https://91.99.239.93',
     'http://91.99.239.93',
 ]
+if DEBUG:
+    _CSRF_TRUSTED_ORIGINS.extend(
+        [
+            'http://127.0.0.1:8000',
+            'http://localhost:8000',
+            'http://127.0.0.1:8001',
+            'http://localhost:8001',
+        ]
+    )
+_CSRF_TRUSTED_ORIGINS.extend(_env_csv('CSRF_TRUSTED_ORIGINS_EXTRA'))
+CSRF_TRUSTED_ORIGINS = _CSRF_TRUSTED_ORIGINS
 
 # Включить логирование для отладки CSRF
 LOGGING = {
@@ -78,8 +123,7 @@ LOGGING = {
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
-# Настройки сессий для Cloudflare
-SESSION_COOKIE_SECURE = False  # Отключаем для HTTP через Cloudflare
+# Настройки сессий для Cloudflare (SESSION_COOKIE_SECURE выше: False как раньше)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -176,7 +220,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = '/var/www/lango_core_static/'
+_static_root = os.environ.get('STATIC_ROOT', '').strip()
+STATIC_ROOT = str(Path(_static_root)) if _static_root else str(BASE_DIR / 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
