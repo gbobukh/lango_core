@@ -43,6 +43,7 @@ Copy `.env.example` to `.env`. Variables are loaded from `.env` via `python-dote
 
 - Runtime / Gunicorn / migrations: `docs/runtime_environment.md`
 - Architecture walkthrough: `docs/walkthrough.md`
+- **Staging** on this host (`staging-core.lango.media`): `docs/staging_setup.md`
 
 ## Tests
 

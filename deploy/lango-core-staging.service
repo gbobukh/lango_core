@@ -1,0 +1,16 @@
+[Unit]
+Description=Lango Core Django (staging) on 127.0.0.1:8003
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/staging-core
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/local/bin/gunicorn -c gunicorn.staging.conf.py lango_core.wsgi:application
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
