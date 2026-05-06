@@ -11,10 +11,10 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from service_builder.utils import WorkflowRunner
+from scheduler.crontab import scheduled_workflow_redis_lock_key
 
 
 SCHEDULED_WORKFLOW_LOCK_TTL_SECONDS = 60 * 60  # 1 hour
-SCHEDULED_WORKFLOW_LOCK_PREFIX = "workflow_lock:sw"
 
 
 def _get_cron_workflow_log_path(sw_id):
@@ -68,7 +68,7 @@ def _acquire_scheduled_workflow_lock(sw_id):
     Acquire distributed lock for a ScheduledWorkflow.
     Returns tuple: (acquired: bool, token: str|None, client|None, key: str).
     """
-    lock_key = f"{SCHEDULED_WORKFLOW_LOCK_PREFIX}:{sw_id}"
+    lock_key = scheduled_workflow_redis_lock_key(sw_id)
     client = _get_redis_client()
     if not client:
         # Redis unavailable -> fail-open to avoid breaking scheduled execution.
@@ -171,7 +171,7 @@ class Command(BaseCommand):
         lock_token = None
         if scheduled_id:
             if prelock_token:
-                lock_key = f"{SCHEDULED_WORKFLOW_LOCK_PREFIX}:{scheduled_id}"
+                lock_key = scheduled_workflow_redis_lock_key(scheduled_id)
                 lock_client = _get_redis_client()
                 if not lock_client:
                     self.stderr.write(

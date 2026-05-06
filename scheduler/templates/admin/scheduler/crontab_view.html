@@ -21,6 +21,12 @@
 
 <div class="summary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6;">
     <p><strong>{% trans "Active in DB" %}:</strong> {{ crontab_info.active_in_db }} | <strong>{% trans "In crontab" %}:</strong> {{ crontab_info.in_crontab }}</p>
+    <p><strong>{% trans "Scheduler namespace" %}:</strong> {{ crontab_info.scheduler_namespace }}</p>
+    {% if crontab_info.foreign_scheduler_jobs %}
+    <p class="help" style="color: #856404; margin-bottom: 0;">
+        {% blocktrans count counter=crontab_info.foreign_scheduler_jobs %}There is {{ counter }} other lango_core scheduler cron line with a different or legacy marker (ignored in this view).{% plural %}There are {{ counter }} other lango_core scheduler cron lines with a different or legacy marker (ignored in this view).{% endblocktrans %}
+    </p>
+    {% endif %}
 </div>
 
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">

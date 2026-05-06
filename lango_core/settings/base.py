@@ -27,6 +27,13 @@ def _env_csv(name: str) -> list[str]:
     return [item.strip() for item in raw.split(',') if item.strip()]
 
 
+# When multiple Django deployments share one Unix user crontab and the same Redis on one host
+# (e.g. prod under /root/lango_core and staging under /root/staging-core), set a distinct
+# SCHEDULER_NAMESPACE per .env so cron sync and workflow distributed locks do not cross-talk.
+# Not a secret. Default ``prod`` keeps legacy single-environment deploys predictable if unset.
+_scheduler_namespace_raw = os.environ.get("SCHEDULER_NAMESPACE", "prod")
+SCHEDULER_NAMESPACE = (_scheduler_namespace_raw.strip() or "prod")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 

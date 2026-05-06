@@ -117,6 +117,15 @@ ls -la /var/www/lango_core_static/service_builder/js/
   - `scripts/run_workflow_cron.sh`
   - `scheduler/crontab.py`
 
+### Scheduler: shared host (prod + staging)
+
+If two deployments on the same machine use the **same Unix user crontab** and optionally the same Redis, set **`SCHEDULER_NAMESPACE`** in each `.env` (e.g. `prod` vs `staging`; default in code is `prod` if unset). Cron rows and Redis workflow locks are scoped by this value so environments do not delete or block each other.
+
+After changing `SCHEDULER_NAMESPACE` or deploying this behavior for the first time:
+
+1. Run **`manage.py sync_crontab`** from the corresponding project root, **or** save a `ScheduledWorkflow` / `Frequency` if your process relies on the post-save signal that calls `sync_crontab`.
+2. Remove **legacy** crontab lines that use the old marker **without** `ns=...` if any remain (manual `crontab -e`), so you do not accumulate duplicate jobs.
+
 ## Redis Prerequisites (Rate Limits)
 
 The project uses Redis for shared API rate-limiting across gunicorn workers.

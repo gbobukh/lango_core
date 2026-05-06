@@ -7,8 +7,44 @@ import sys
 
 from django.conf import settings
 
-MARKER = "# lango_core scheduler"
-SCHEDULED_WORKFLOW_LOCK_PREFIX = "workflow_lock:sw"
+# Base substring every scheduler cron comment must contain (before namespace split).
+MARKER_BASE = "# lango_core scheduler"
+_NS_RE = re.compile(r"\bns=([^\s]+)")
+_SW_ID_RE = re.compile(r"sw_id=(\d+)")
+
+
+def get_scheduler_namespace():
+    """Deployment id for cron comments and Redis locks (from settings.SCHEDULER_NAMESPACE)."""
+    return getattr(settings, "SCHEDULER_NAMESPACE", "prod") or "prod"
+
+
+def format_scheduler_cron_comment(sw_id, namespace=None):
+    """Cron job comment marking a row as managed by this deployment's scheduler sync."""
+    ns = namespace or get_scheduler_namespace()
+    return f"{MARKER_BASE} ns={ns} sw_id={sw_id}"
+
+
+def cron_comment_matches_namespace(comment, namespace=None):
+    """
+    True if comment is a namespaced scheduler row owned by ``namespace``.
+    Legacy lines with MARKER_BASE but without ns= do not match any namespace (manual cleanup).
+    """
+    if not comment or MARKER_BASE not in comment:
+        return False
+    ns = namespace or get_scheduler_namespace()
+    m = _NS_RE.search(comment)
+    if not m:
+        return False
+    return m.group(1) == ns
+
+
+def scheduled_workflow_redis_lock_key(sw_id, namespace=None):
+    """
+    Redis key for ScheduledWorkflow overlap protection.
+    Include namespace so the same primary key in different DBs does not lock the other env.
+    """
+    ns = namespace or get_scheduler_namespace()
+    return f"workflow_lock:{ns}:sw:{sw_id}"
 
 
 def _get_redis_client():
@@ -38,7 +74,7 @@ def is_scheduled_workflow_running(sw_id, redis_client=None):
     if not client:
         return False
     try:
-        lock_key = f"{SCHEDULED_WORKFLOW_LOCK_PREFIX}:{sw_id}"
+        lock_key = scheduled_workflow_redis_lock_key(sw_id)
         return bool(client.exists(lock_key))
     except Exception:
         return False
@@ -47,18 +83,18 @@ def is_scheduled_workflow_running(sw_id, redis_client=None):
 def get_crontab_info():
     """
     Read current crontab and return structured info for display.
-    Returns dict: {
-        'error': str or None,
-        'entries': [{'cron_expr': str, 'command': str, 'sw_id': int or None, 'sw': ScheduledWorkflow or None, 'status': str}, ...],
-        'active_in_db': int,
-        'in_crontab': int,
-    }
+
+    Only jobs whose comment matches MARKER_BASE and ns=<current namespace> are listed and
+    counted in ``in_crontab``. Other lango_core scheduler markers (different ns or legacy
+    without ns=) are counted in ``foreign_scheduler_jobs``.
     """
     result = {
         'error': None,
         'entries': [],
         'active_in_db': 0,
         'in_crontab': 0,
+        'scheduler_namespace': get_scheduler_namespace(),
+        'foreign_scheduler_jobs': 0,
     }
     try:
         from crontab import CronTab
@@ -68,6 +104,7 @@ def get_crontab_info():
 
     from scheduler.models import ScheduledWorkflow
 
+    namespace = get_scheduler_namespace()
     active = ScheduledWorkflow.objects.filter(is_active=True).select_related('workflow', 'frequency')
     result['active_in_db'] = active.count()
     sw_by_id = {sw.pk: sw for sw in active}
@@ -79,12 +116,14 @@ def get_crontab_info():
         result['error'] = str(e)
         return result
 
-    sw_id_re = re.compile(r'sw_id=(\d+)')
     for job in cron:
-        if not job.comment or MARKER not in job.comment:
+        if not job.comment or MARKER_BASE not in job.comment:
+            continue
+        if not cron_comment_matches_namespace(job.comment, namespace):
+            result['foreign_scheduler_jobs'] += 1
             continue
         result['in_crontab'] += 1
-        m = sw_id_re.search(job.comment)
+        m = _SW_ID_RE.search(job.comment)
         sw_id = int(m.group(1)) if m else None
         sw = sw_by_id.get(sw_id) if sw_id else None
         if sw_id and not sw:
@@ -116,15 +155,15 @@ def get_crontab_info():
                 'arguments_summary': sw.get_arguments_summary(),
                 'is_running': is_scheduled_workflow_running(sw.pk, redis_client=redis_client),
             })
-            result['in_crontab'] += 0  # don't count missing as in crontab
 
     return result
 
 
 def sync_crontab():
     """
-    Sync all active ScheduledWorkflow entries to the system crontab.
-    Removes existing scheduler entries and adds current ones.
+    Sync all active ScheduledWorkflow entries to the system crontab for this deployment.
+    Removes only cron rows marked with MARKER_BASE and ns=<current SCHEDULER_NAMESPACE>.
+
     Returns (success: bool, message: str).
     """
     try:
@@ -134,16 +173,16 @@ def sync_crontab():
 
     from scheduler.models import ScheduledWorkflow
 
-    # Use current user's crontab by default
+    namespace = get_scheduler_namespace()
     cron = CronTab(user=True)
 
-    # Remove existing scheduler entries (comment marker)
-    to_remove = [job for job in cron if job.comment and MARKER in job.comment]
+    to_remove = [
+        job for job in cron
+        if job.comment and cron_comment_matches_namespace(job.comment, namespace)
+    ]
     for job in to_remove:
         cron.remove(job)
 
-    # Add new entries for active scheduled workflows
-    # Use wrapper script to avoid % escaping issues in crontab
     base_dir = str(settings.BASE_DIR)
     python_path = os.environ.get('PYTHON_PATH', sys.executable)
     script_path = os.path.join(base_dir, 'scripts', 'run_workflow_cron.sh')
@@ -151,9 +190,10 @@ def sync_crontab():
     for sw in ScheduledWorkflow.objects.filter(is_active=True).select_related('workflow', 'frequency'):
         cron_expr = sw.frequency.to_cron_expression()
         cmd = f"PYTHON_PATH={python_path} {script_path} {sw.pk}"
-        job = cron.new(command=cmd, comment=f"{MARKER} sw_id={sw.pk}")
+        comment = format_scheduler_cron_comment(sw.pk, namespace)
+        job = cron.new(command=cmd, comment=comment)
         job.setall(cron_expr)
 
     cron.write()
     count = ScheduledWorkflow.objects.filter(is_active=True).count()
-    return True, f"Synced {count} scheduled workflow(s) to crontab."
+    return True, f"Synced {count} scheduled workflow(s) to crontab (namespace={namespace})."

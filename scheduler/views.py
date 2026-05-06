@@ -12,10 +12,13 @@ from django.views import View
 from django.contrib.admin.views.decorators import staff_member_required
 from django.utils.decorators import method_decorator
 
-from .crontab import get_crontab_info, is_scheduled_workflow_running
+from .crontab import (
+    get_crontab_info,
+    is_scheduled_workflow_running,
+    scheduled_workflow_redis_lock_key,
+)
 
 SCHEDULED_WORKFLOW_LOCK_TTL_SECONDS = 60 * 60  # 1 hour
-SCHEDULED_WORKFLOW_LOCK_PREFIX = "workflow_lock:sw"
 
 
 def _get_redis_client():
@@ -85,7 +88,7 @@ class RunScheduledWorkflowView(View):
             return redirect('admin:scheduler_scheduledworkflow_crontab')
 
         lock_client = None
-        lock_key = f"{SCHEDULED_WORKFLOW_LOCK_PREFIX}:{sw_id}"
+        lock_key = scheduled_workflow_redis_lock_key(sw_id)
         lock_token = None
         lock_acquired = False
         lock_client = _get_redis_client()

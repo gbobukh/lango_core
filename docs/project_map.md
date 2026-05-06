@@ -14,7 +14,7 @@
   - Runtime-движок: `ScenarioRunner`, `WorkflowRunner` (`service_builder/utils.py`).
 - `scheduler` — планировщик запуска workflow:
   - `Frequency` (cron-выражение), `ScheduledWorkflow` (workflow + расписание + default args).
-  - Sync в системный crontab (`scheduler/crontab.py`), запуск через management command (`scheduler/management/commands/run_workflow.py`).
+  - Sync в системный crontab (`scheduler/crontab.py`, строки с маркером `# lango_core scheduler` и `ns=<SCHEDULER_NAMESPACE>`), запуск через management command (`scheduler/management/commands/run_workflow.py`).
   - Админ-виджеты для typed аргументов scheduled workflow.
 - `metadata` — справочники и правила конфигурации:
   - Наборы параметров/совместимости/глобальных переменных (`TargetParameter`, `CompatibilityMatrix`, `GlobalVariable`).
