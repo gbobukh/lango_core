@@ -145,6 +145,153 @@ def _set_path(obj, path, value):
     current[parts[-1]] = value
 
 
+def _contract_type_hint(spec):
+    if not isinstance(spec, dict):
+        return "untyped"
+    t = str(spec.get("type") or "").strip().lower()
+    if not t:
+        return "untyped"
+    if t == "array":
+        it = str(spec.get("items_type") or "").strip().lower()
+        return f"array<{it}>" if it else "array"
+    return t
+
+
+def _coerce_scalar(value, target_type):
+    t = (target_type or "").strip().lower()
+    if not t:
+        return value, False
+
+    if t == "string":
+        if isinstance(value, str):
+            return value, False
+        return str(value), True
+
+    if t == "integer":
+        if isinstance(value, bool):
+            raise ValueError("boolean cannot be coerced to integer")
+        if isinstance(value, int):
+            return value, False
+        if isinstance(value, float):
+            if value.is_integer():
+                return int(value), True
+            raise ValueError("non-integer number cannot be coerced to integer")
+        if isinstance(value, str):
+            s = value.strip()
+            if re.fullmatch(r"[-+]?\d+", s):
+                return int(s), True
+            raise ValueError("string is not a valid integer")
+        raise ValueError(f"type '{type(value).__name__}' cannot be coerced to integer")
+
+    if t == "number":
+        if isinstance(value, bool):
+            raise ValueError("boolean cannot be coerced to number")
+        if isinstance(value, (int, float)):
+            return value, False
+        if isinstance(value, str):
+            s = value.strip()
+            try:
+                return float(s), True
+            except ValueError:
+                raise ValueError("string is not a valid number")
+        raise ValueError(f"type '{type(value).__name__}' cannot be coerced to number")
+
+    if t == "boolean":
+        if isinstance(value, bool):
+            return value, False
+        if isinstance(value, str):
+            s = value.strip().lower()
+            if s in ("true", "1", "yes", "y", "on"):
+                return True, True
+            if s in ("false", "0", "no", "n", "off"):
+                return False, True
+            raise ValueError("string is not a valid boolean")
+        raise ValueError(f"type '{type(value).__name__}' cannot be coerced to boolean")
+
+    if t == "object":
+        if isinstance(value, dict):
+            return value, False
+        if isinstance(value, str):
+            s = value.strip()
+            try:
+                parsed = json.loads(s)
+            except json.JSONDecodeError:
+                raise ValueError("string is not valid JSON object")
+            if isinstance(parsed, dict):
+                return parsed, True
+            raise ValueError("JSON value is not an object")
+        raise ValueError(f"type '{type(value).__name__}' cannot be coerced to object")
+
+    # Unknown type: keep as-is for forward compatibility.
+    return value, False
+
+
+def _coerce_contract_value(value, spec):
+    if not isinstance(spec, dict):
+        return value, False
+    nullable = spec.get("nullable", True)
+    if value is None:
+        if nullable:
+            return None, False
+        raise ValueError("null is not allowed")
+
+    t = str(spec.get("type") or "").strip().lower()
+    if not t:
+        return value, False
+
+    if t == "array":
+        items_type = str(spec.get("items_type") or "").strip().lower()
+        changed = False
+        arr = value
+        if isinstance(arr, str):
+            s = arr.strip()
+            if s.startswith("[") and s.endswith("]"):
+                try:
+                    arr = json.loads(s)
+                    changed = True
+                except json.JSONDecodeError:
+                    pass
+        if not isinstance(arr, list):
+            arr = [arr]
+            changed = True
+
+        if items_type:
+            coerced_items = []
+            for item in arr:
+                coerced_item, item_changed = _coerce_scalar(item, items_type)
+                coerced_items.append(coerced_item)
+                changed = changed or item_changed
+            arr = coerced_items
+        return arr, changed
+
+    return _coerce_scalar(value, t)
+
+
+def _apply_payload_value_types(method, method_args, log_func=None):
+    specs = getattr(method, "payload_value_types", None) or {}
+    if not isinstance(specs, dict):
+        return method_args
+
+    for arg_name, value in list(method_args.items()):
+        spec = specs.get(arg_name)
+        if not isinstance(spec, dict):
+            continue
+        before_type = type(value).__name__
+        try:
+            coerced_value, changed = _coerce_contract_value(value, spec)
+        except ValueError as exc:
+            expected = _contract_type_hint(spec)
+            raise ValueError(
+                f"Type coercion failed for '{arg_name}': expected {expected}, got {before_type}. {exc}"
+            )
+        method_args[arg_name] = coerced_value
+        if changed and log_func:
+            expected = _contract_type_hint(spec)
+            after_type = type(coerced_value).__name__
+            log_func(f"Coerced '{arg_name}' to {expected} ({before_type} -> {after_type})")
+    return method_args
+
+
 from .actions import ActionRunner
 
 
@@ -604,7 +751,7 @@ class ScenarioRunner:
                             method_args[arg_name] = resolved_value
                     else:
                         method_args[arg_name] = raw_value
-                elif raw_value in self.context:
+                elif isinstance(raw_value, str) and raw_value in self.context:
                     method_args[arg_name] = self.context[raw_value]
                 else:
                     try:
@@ -619,6 +766,8 @@ class ScenarioRunner:
                 if arg_name.startswith('body.'):
                     continue
                 raise Exception(f"Argument '{arg_name}' is not mapped")
+
+        method_args = _apply_payload_value_types(method, method_args, log_func=self.log)
 
         endpoint = method.service_endpoint
         # Apply date formatting for params with date roles (e.g. Binom Y-m-d H:i:s)
@@ -1326,6 +1475,9 @@ def execute_single_method(endpoint_id, method_id, variables):
             url = url.replace(f"{{{arg_name}}}", str(variables[arg_name]))
             url = url.replace(f"%{arg_name}%", str(variables[arg_name]))
 
+    typed_method_args = {k: variables.get(k) for k in (method.arguments or []) if k in variables}
+    typed_method_args = _apply_payload_value_types(method, typed_method_args, log_func=None)
+
     if not url.startswith('http'):
         if not auth_id:
             raise Exception(f"Invalid URL '{url}': No scheme supplied. Relative URLs require auth_id.")
@@ -1338,13 +1490,14 @@ def execute_single_method(endpoint_id, method_id, variables):
             )
         url = f"{base_url}/{url.lstrip('/')}"
 
-    payload = variables.get('payload')
+    payload = typed_method_args.get('payload', variables.get('payload'))
     if isinstance(payload, str):
         try:
             payload = json.loads(payload)
         except json.JSONDecodeError:
             payload = None
     body_args = {k: v for k, v in variables.items() if k.startswith('body.')}
+    body_args.update({k: v for k, v in typed_method_args.items() if k.startswith('body.')})
     if body_args:
         if payload is None:
             payload = {}

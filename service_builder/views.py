@@ -2,6 +2,7 @@
 Views for Run Tests page and related API endpoints.
 """
 import json
+from django.contrib import admin
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views import View
@@ -77,6 +78,7 @@ class TestEndpointView(LoginRequiredMixin, View):
                 pass
 
         context = {
+            **admin.site.each_context(request),
             'auth_choices': auth_choices,
             'scenario_id': scenario_id or '',
             'workflow_id': workflow_id or '',
