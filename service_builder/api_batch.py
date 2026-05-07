@@ -223,9 +223,6 @@ class ApiBatchRunner:
                 op_ctx["op"].update(resolved_ids)
 
                 method_args = self._build_method_args(route.get("argument_mapping") or {}, op_ctx)
-                for required_arg in (method.arguments or []):
-                    if required_arg not in method_args:
-                        raise ValueError(f"Missing mapped arg '{required_arg}' for method '{method.name}'")
 
                 if dry_run:
                     row["status"] = "success"
