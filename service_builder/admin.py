@@ -330,7 +330,16 @@ class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
     def get_fieldsets(self, request, obj=None):
         fieldsets = [
             (None, {
-                'fields': ('service_endpoint', 'name', 'return_key', 'payload_fields', 'arguments', 'validation_status', 'mark_as_test')
+                'fields': (
+                    'service_endpoint',
+                    'name',
+                    'return_key',
+                    'payload_fields',
+                    'payload_value_types',
+                    'arguments',
+                    'validation_status',
+                    'mark_as_test',
+                )
             }),
         ]
         if request.user.is_superuser:

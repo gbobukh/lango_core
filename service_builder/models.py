@@ -264,6 +264,15 @@ class ServiceMethod(ValidationStatusMixin, models.Model):
         null=True,
         help_text="List of fields to be constructed in the JSON body (e.g. ['body.name', 'body.data.id'])"
     )
+    payload_value_types = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Optional payload argument typing metadata. "
+            "Format: {\"body.campaignIds\": {\"type\": \"array\", \"items_type\": \"integer\", "
+            "\"nullable\": false, \"hint\": \"Array of campaign IDs\", \"example\": [45]}}"
+        ),
+    )
     
     visible_to = models.ManyToManyField(
         User,

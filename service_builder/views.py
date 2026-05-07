@@ -260,9 +260,14 @@ class GetMethodArgumentsView(LoginRequiredMixin, View):
     def get(self, request, method_id):
         try:
             method = ServiceMethod.objects.get(pk=method_id)
-            return JsonResponse({'arguments': method.arguments or []})
+            return JsonResponse(
+                {
+                    'arguments': method.arguments or [],
+                    'argument_types': method.payload_value_types or {},
+                }
+            )
         except ServiceMethod.DoesNotExist:
-            return JsonResponse({'arguments': []})
+            return JsonResponse({'arguments': [], 'argument_types': {}})
 
 
 @method_decorator(staff_member_required, name='dispatch')

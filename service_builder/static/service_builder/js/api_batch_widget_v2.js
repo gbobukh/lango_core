@@ -248,6 +248,7 @@
 
         var batchConfig = {};
         var methods     = [];
+        var methodArgTypes = {};
 
         function currentStepType() {
             return ($row.find("select[id$=\"-step_type\"]").val() || "").trim();
@@ -278,13 +279,24 @@
         }
 
         function fetchMethodArgs(methodId, cb) {
-            if (!methodId) { cb([]); return; }
+            if (!methodId) { cb([], {}); return; }
             $.ajax({
                 url: "/admin/service_builder/scenario/api/method-arguments/" + methodId + "/",
                 method: "GET",
-                success: function (data) { cb(data.arguments || []); },
-                error: function () { cb([]); }
+                success: function (data) { cb(data.arguments || [], data.argument_types || {}); },
+                error: function () { cb([], {}); }
             });
+        }
+
+        function formatTypeHint(meta) {
+            if (!meta || typeof meta !== "object") return "untyped";
+            var t = (meta.type || "").trim();
+            if (!t) return "untyped";
+            if (t === "array") {
+                var it = (meta.items_type || "").trim();
+                return it ? ("array<" + it + ">") : "array";
+            }
+            return t;
         }
 
         function saveRoute(index, route, $entity, $methodSel) {
@@ -321,8 +333,34 @@
 
             methodArgs.forEach(function (arg) {
                 var $tr = $("<tr>");
-
-                var $tdArg = $('<td style="padding:5px 6px; border-bottom:1px solid #eee; vertical-align:top; width:30%;"></td>').text(arg);
+                var meta = methodArgTypes[arg] || {};
+                var hintText = formatTypeHint(meta);
+                var titleParts = [];
+                if (meta.hint) titleParts.push(String(meta.hint));
+                if (meta.example !== undefined && meta.example !== null && meta.example !== "") {
+                    try {
+                        titleParts.push("example: " + JSON.stringify(meta.example));
+                    } catch (_e) {
+                        titleParts.push("example: " + String(meta.example));
+                    }
+                }
+                var titleAttr = titleParts.length ? titleParts.join(" | ") : "";
+                var $tdArg = $('<td style="padding:5px 6px; border-bottom:1px solid #eee; vertical-align:top; width:30%;"></td>');
+                $tdArg.append($('<div>').text(arg));
+                var $badge = $('<span>')
+                    .text(hintText)
+                    .css({
+                        display: "inline-block",
+                        "margin-top": "3px",
+                        padding: "1px 6px",
+                        "font-size": "11px",
+                        color: "#444",
+                        background: "#eef2f6",
+                        border: "1px solid #d5dde5",
+                        "border-radius": "9px"
+                    });
+                if (titleAttr) $badge.attr("title", titleAttr);
+                $tdArg.append($badge);
 
                 var $input = $('<textarea rows="1"></textarea>').css({
                     flex: "1",
@@ -420,7 +458,8 @@
             $methodSel.on("change", function () {
                 route.argument_mapping = {};
                 saveRoute(index, route, $entity, $methodSel);
-                fetchMethodArgs($methodSel.val(), function (args) {
+                fetchMethodArgs($methodSel.val(), function (args, types) {
+                    methodArgTypes = types || {};
                     renderMappingTable($tbody, route, index, args, $entity, $methodSel);
                 });
             });
@@ -432,7 +471,8 @@
             });
 
             // Initial load of args
-            fetchMethodArgs($methodSel.val(), function (args) {
+            fetchMethodArgs($methodSel.val(), function (args, types) {
+                methodArgTypes = types || {};
                 renderMappingTable($tbody, route, index, args, $entity, $methodSel);
             });
 

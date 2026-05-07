@@ -54,6 +54,23 @@ class ServiceMethodForm(ClickToEditFormMixin, TestStatusFormMixin, forms.ModelFo
         widgets = {
             'arguments': forms.Textarea(attrs={'readonly': 'readonly', 'rows': 3}),
             'payload_fields': PayloadFieldsWidget(attrs={'rows': 3, 'placeholder': '["body.name", "body.budget"]'}),
+            'payload_value_types': forms.Textarea(
+                attrs={
+                    'rows': 8,
+                    'style': 'font-family: monospace;',
+                    'placeholder': (
+                        '{\n'
+                        '  "body.campaignIds": {\n'
+                        '    "type": "array",\n'
+                        '    "items_type": "integer",\n'
+                        '    "nullable": false,\n'
+                        '    "hint": "Array of campaign IDs",\n'
+                        '    "example": [45]\n'
+                        '  }\n'
+                        '}'
+                    ),
+                }
+            ),
         }
 
 from .widgets import ArgumentMappingWidget, TypedArgumentWidget

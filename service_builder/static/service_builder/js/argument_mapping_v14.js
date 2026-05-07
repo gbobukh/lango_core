@@ -108,6 +108,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // State
             let currentMapping = {};
+            let methodArgTypes = {};
             try {
                 currentMapping = JSON.parse($textarea.val() || '{}');
             } catch (e) {
@@ -162,6 +163,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 $textarea.val(val);
             }
 
+            function getTypeHint(meta) {
+                if (!meta || typeof meta !== 'object') return 'untyped';
+                const t = String(meta.type || '').trim();
+                if (!t) return 'untyped';
+                if (t === 'array') {
+                    const it = String(meta.items_type || '').trim();
+                    return it ? `array<${it}>` : 'array';
+                }
+                return t;
+            }
+
             function renderTable(methodArgs) {
                 $container.empty();
                 const contextVars = getContextVariables();
@@ -202,7 +214,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 methodArgs.forEach(arg => {
                     const $tr = $('<tr>');
-                    const $tdArg = $('<td>').text(arg);
+                    const meta = methodArgTypes[arg] || {};
+                    const typeHint = getTypeHint(meta);
+                    const hintParts = [];
+                    if (meta.hint) hintParts.push(String(meta.hint));
+                    if (meta.example !== undefined && meta.example !== null && meta.example !== '') {
+                        try { hintParts.push(`example: ${JSON.stringify(meta.example)}`); }
+                        catch (_e) { hintParts.push(`example: ${String(meta.example)}`); }
+                    }
+                    const hintTitle = hintParts.join(' | ');
+                    const $tdArg = $('<td>');
+                    $tdArg.append($('<div>').text(arg));
+                    const $badge = $('<span>').text(typeHint).css({
+                        'display': 'inline-block',
+                        'margin-top': '3px',
+                        'padding': '1px 6px',
+                        'font-size': '11px',
+                        'color': '#444',
+                        'background': '#eef2f6',
+                        'border': '1px solid #d5dde5',
+                        'border-radius': '9px'
+                    });
+                    if (hintTitle) $badge.attr('title', hintTitle);
+                    $tdArg.append($badge);
                     const $tdInput = $('<td>');
 
                     // Container for flex layout
@@ -343,6 +377,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     url: '/admin/service_builder/scenario/api/method-arguments/' + methodId + '/',
                     method: 'GET',
                     success: function (data) {
+                        methodArgTypes = data.argument_types || {};
                         renderTable(data.arguments);
                     },
                     error: function () {
