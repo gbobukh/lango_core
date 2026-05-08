@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from django.conf import settings
-from django.contrib import messages
+from django.contrib import admin, messages
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
@@ -61,10 +61,12 @@ class CrontabView(View):
 
     def get(self, request):
         info = get_crontab_info()
-        return render(request, 'admin/scheduler/crontab_view.html', {
+        context = {
+            **admin.site.each_context(request),
             'crontab_info': info,
             'title': 'Crontab',
-        })
+        }
+        return render(request, 'admin/scheduler/crontab_view.html', context)
 
 
 @method_decorator(staff_member_required, name='dispatch')

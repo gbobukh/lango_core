@@ -1,16 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% load i18n %}
 
-{% block title %}{{ title }} | {% trans "Django site admin" %}{% endblock %}
-
-{% block breadcrumbs %}
-<ol class="breadcrumbs">
-    <li><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
-    <li><a href="{% url 'admin:app_list' app_label='scheduler' %}">SCHEDULER</a></li>
-    <li><a href="{% url 'admin:scheduler_scheduledworkflow_changelist' %}">{% trans 'Scheduled Workflows' %}</a></li>
-    <li aria-current="page">{{ title }}</li>
-</ol>
-{% endblock %}
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
 
 {% block content %}
 {% if crontab_info.error %}
