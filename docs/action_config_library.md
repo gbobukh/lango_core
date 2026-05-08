@@ -44,6 +44,7 @@ Library contains templates for all current `ACTION` types:
 - `FILTER`
 - `TRANSFORM`
 - `ENRICH`
+- `TREE_STATS_BY_PATHS`
 - `HIERARCHICAL_FLATTEN`
 - `MULTI_HIERARCHICAL_FLATTEN`
 - `GROUP_BY`

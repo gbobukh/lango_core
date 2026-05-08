@@ -47,6 +47,8 @@ class ActionRunner:
             return self._run_transform(config)
         elif action_type == 'DIFF_OBJECTS':
             return self._run_diff_objects(config)
+        elif action_type == 'TREE_STATS_BY_PATHS':
+            return self._run_tree_stats_by_paths(config)
         elif action_type == 'ENRICH':
             return self._run_enrich(config)
         elif action_type == 'HIERARCHICAL_FLATTEN':
@@ -476,6 +478,223 @@ class ActionRunner:
             result.append(item)
 
         self._log(f"DICT_TO_LIST: {len(result)} items from '{input_name}'")
+        return result
+
+    def _run_tree_stats_by_paths(self, config):
+        """
+        Computes branch-level leaf stats from changed JSON paths.
+
+        This action is analysis-only and does not mutate state.
+
+        Config:
+        - state_input: variable path to source JSON object (required)
+        - paths_input: variable path to changed paths payload (required)
+        - path_field: field name when paths_input resolves to list of objects (default: 'path')
+        - branch_spec: {
+            branch_level_node: node name to anchor branch (required, e.g. 'paths'),
+            leaf_collection: child collection on branch (required, e.g. 'offers'),
+            leaf_id_field: optional field name to export leaf ids (e.g. 'offerId'),
+            leaf_flags: optional list of boolean-ish flags to compute enabled leaves (e.g. ['enabled'])
+          }
+        - metrics: {
+            count_total_leaves: bool,
+            count_enabled_leaves: bool
+          }
+        """
+        state_input = config.get('state_input')
+        paths_input = config.get('paths_input')
+        path_field = config.get('path_field', 'path')
+        branch_spec = config.get('branch_spec') or {}
+        metrics = config.get('metrics') or {}
+
+        if not state_input:
+            raise ValueError(f"{self._err_prefix()}TREE_STATS_BY_PATHS requires 'state_input'.")
+        if not paths_input:
+            raise ValueError(f"{self._err_prefix()}TREE_STATS_BY_PATHS requires 'paths_input'.")
+        if not isinstance(branch_spec, dict):
+            raise ValueError(f"{self._err_prefix()}TREE_STATS_BY_PATHS 'branch_spec' must be an object.")
+
+        branch_level_node = branch_spec.get('branch_level_node')
+        leaf_collection = branch_spec.get('leaf_collection')
+        leaf_id_field = branch_spec.get('leaf_id_field')
+        leaf_flags = branch_spec.get('leaf_flags') or []
+        if not isinstance(leaf_flags, list):
+            raise ValueError(f"{self._err_prefix()}TREE_STATS_BY_PATHS 'leaf_flags' must be a list.")
+
+        if not branch_level_node or not isinstance(branch_level_node, str):
+            raise ValueError(
+                f"{self._err_prefix()}TREE_STATS_BY_PATHS requires branch_spec.branch_level_node (string)."
+            )
+        if not leaf_collection or not isinstance(leaf_collection, str):
+            raise ValueError(
+                f"{self._err_prefix()}TREE_STATS_BY_PATHS requires branch_spec.leaf_collection (string)."
+            )
+
+        state_obj = self._resolve_variable(state_input)
+        if not isinstance(state_obj, dict):
+            raise ValueError(
+                f"{self._err_prefix()}TREE_STATS_BY_PATHS state_input '{state_input}' must resolve to object."
+            )
+
+        raw_paths = self._resolve_variable(paths_input)
+        if raw_paths is None:
+            raise ValueError(
+                f"{self._err_prefix()}TREE_STATS_BY_PATHS paths_input '{paths_input}' was not found in context."
+            )
+
+        def _extract_path_entries(value):
+            if isinstance(value, dict) and isinstance(value.get('changes'), list):
+                return value.get('changes')
+            if isinstance(value, list):
+                return value
+            return []
+
+        path_entries = _extract_path_entries(raw_paths)
+        normalized_paths = []
+        unresolved = []
+
+        for entry in path_entries:
+            if isinstance(entry, str):
+                p = entry.strip()
+            elif isinstance(entry, dict):
+                p_val = entry.get(path_field)
+                p = p_val.strip() if isinstance(p_val, str) else ''
+            else:
+                p = ''
+
+            if p:
+                normalized_paths.append(p)
+            else:
+                unresolved.append({'input_path': None, 'reason': 'invalid_path_entry'})
+
+        def _tokenize(path):
+            tokens = []
+            buf = []
+            i = 0
+            while i < len(path):
+                ch = path[i]
+                if ch == '.':
+                    if buf:
+                        tokens.append(''.join(buf))
+                        buf = []
+                    i += 1
+                    continue
+                if ch == '[':
+                    if buf:
+                        tokens.append(''.join(buf))
+                        buf = []
+                    end = path.find(']', i)
+                    if end == -1:
+                        return []
+                    tokens.append(path[i:end + 1])
+                    i = end + 1
+                    continue
+                buf.append(ch)
+                i += 1
+            if buf:
+                tokens.append(''.join(buf))
+            return [t for t in tokens if t]
+
+        def _tokens_to_path(tokens):
+            out = ''
+            for tok in tokens:
+                if tok.startswith('['):
+                    out += tok
+                else:
+                    out = tok if not out else f"{out}.{tok}"
+            return out
+
+        def _normalize_bool(v):
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)):
+                return v != 0
+            if isinstance(v, str):
+                return v.strip().lower() in ('1', 'true', 'yes', 'on')
+            return False
+
+        def _extract_branch_path(input_path):
+            tokens = _tokenize(input_path)
+            if not tokens:
+                return None, 'invalid_path'
+            try:
+                idx = tokens.index(branch_level_node)
+            except ValueError:
+                return None, 'branch_level_node_not_found'
+            end_idx = idx
+            if idx + 1 < len(tokens) and tokens[idx + 1].startswith('['):
+                end_idx = idx + 1
+            return _tokens_to_path(tokens[:end_idx + 1]), None
+
+        seen_branches = set()
+        branch_paths = []
+        for input_path in normalized_paths:
+            branch_path, err = _extract_branch_path(input_path)
+            if err:
+                unresolved.append({'input_path': input_path, 'reason': err})
+                continue
+            if not branch_path:
+                unresolved.append({'input_path': input_path, 'reason': 'invalid_path'})
+                continue
+            if branch_path not in seen_branches:
+                seen_branches.add(branch_path)
+                branch_paths.append((input_path, branch_path))
+
+        count_total = bool(metrics.get('count_total_leaves', True))
+        count_enabled = bool(metrics.get('count_enabled_leaves', True))
+
+        branches = []
+        for source_path, branch_path in branch_paths:
+            branch_obj = _resolve_path(state_obj, branch_path)
+            if branch_obj is _MISSING:
+                unresolved.append({'input_path': source_path, 'reason': 'branch_not_found'})
+                continue
+            if not isinstance(branch_obj, dict):
+                unresolved.append({'input_path': source_path, 'reason': 'branch_not_object'})
+                continue
+
+            leaves = branch_obj.get(leaf_collection, _MISSING)
+            if leaves is _MISSING:
+                unresolved.append({'input_path': source_path, 'reason': 'leaf_collection_not_found'})
+                continue
+            if not isinstance(leaves, list):
+                unresolved.append({'input_path': source_path, 'reason': 'leaf_collection_not_list'})
+                continue
+
+            branch_info = {'branch_path': branch_path}
+            if count_total:
+                branch_info['total_leaves'] = len(leaves)
+            if count_enabled:
+                enabled_count = 0
+                for leaf in leaves:
+                    if not isinstance(leaf, dict):
+                        continue
+                    if not leaf_flags:
+                        continue
+                    if all(_normalize_bool(_resolve_path(leaf, flag)) for flag in leaf_flags):
+                        enabled_count += 1
+                branch_info['enabled_leaves'] = enabled_count
+            if leaf_id_field:
+                branch_info['leaf_ids'] = [
+                    leaf.get(leaf_id_field)
+                    for leaf in leaves
+                    if isinstance(leaf, dict) and leaf_id_field in leaf
+                ]
+            branches.append(branch_info)
+
+        result = {
+            'summary': {
+                'requested_paths': len(normalized_paths),
+                'resolved_branches': len(branches),
+                'unresolved_paths': len(unresolved),
+            },
+            'branches': branches,
+            'unresolved': unresolved,
+        }
+        self._log(
+            f"TREE_STATS_BY_PATHS: requested_paths={len(normalized_paths)}, "
+            f"resolved_branches={len(branches)}, unresolved={len(unresolved)}"
+        )
         return result
 
     def _run_transform(self, config):

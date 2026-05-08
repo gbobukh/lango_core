@@ -177,6 +177,129 @@ class TransformUpdateNestedByPredicateTests(TestCase):
         self.assertTrue(campaign['customRotation']['rules'][0]['paths'][0]['offers'][0]['enabled'])
 
 
+class TreeStatsByPathsActionTests(TestCase):
+    def test_tree_stats_by_paths_counts_only_affected_branches(self):
+        campaign = {
+            'customRotation': {
+                'rules': [
+                    {
+                        'id': 1,
+                        'paths': [
+                            {
+                                'offers': [
+                                    {'offerId': 50, 'enabled': True},
+                                    {'offerId': 60, 'enabled': False},
+                                ]
+                            },
+                            {
+                                'offers': [
+                                    {'offerId': 70, 'enabled': True},
+                                ]
+                            },
+                        ],
+                    },
+                    {
+                        'id': 2,
+                        'paths': [
+                            {
+                                'offers': [
+                                    {'offerId': 91, 'enabled': False},
+                                ]
+                            }
+                        ],
+                    },
+                ]
+            }
+        }
+        diff = {
+            'changes': [
+                {'path': 'customRotation.rules[0].paths[0].offers[1].enabled'},
+                {'path': 'customRotation.rules[0].paths[0].offers[0].enabled'},
+                {'path': 'customRotation.rules[1].paths[0].offers[0].enabled'},
+            ]
+        }
+        runner = ActionRunner(context={'campaign_after': campaign, 'diff': diff})
+        step = SimpleNamespace(
+            action_type='TREE_STATS_BY_PATHS',
+            action_config={
+                'state_input': 'campaign_after',
+                'paths_input': 'diff.changes',
+                'path_field': 'path',
+                'branch_spec': {
+                    'branch_level_node': 'paths',
+                    'leaf_collection': 'offers',
+                    'leaf_id_field': 'offerId',
+                    'leaf_flags': ['enabled'],
+                },
+                'metrics': {
+                    'count_total_leaves': True,
+                    'count_enabled_leaves': True,
+                },
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result['summary']['requested_paths'], 3)
+        self.assertEqual(result['summary']['resolved_branches'], 2)
+        self.assertEqual(result['summary']['unresolved_paths'], 0)
+        self.assertEqual(len(result['branches']), 2)
+
+        b0 = next(
+            b for b in result['branches'] if b['branch_path'] == 'customRotation.rules[0].paths[0]'
+        )
+        b1 = next(
+            b for b in result['branches'] if b['branch_path'] == 'customRotation.rules[1].paths[0]'
+        )
+
+        self.assertEqual(b0['total_leaves'], 2)
+        self.assertEqual(b0['enabled_leaves'], 1)
+        self.assertEqual(b0['leaf_ids'], [50, 60])
+
+        self.assertEqual(b1['total_leaves'], 1)
+        self.assertEqual(b1['enabled_leaves'], 0)
+        self.assertEqual(b1['leaf_ids'], [91])
+
+    def test_tree_stats_by_paths_reports_unresolved_paths(self):
+        campaign = {
+            'customRotation': {
+                'rules': [
+                    {'paths': [{'offers': [{'offerId': 50, 'enabled': True}]}]},
+                ]
+            }
+        }
+        diff = {
+            'changes': [
+                {'path': 'customRotation.rules[99].paths[0].offers[0].enabled'},
+                {'path': 'customRotation.rules[0].unknown[0].enabled'},
+            ]
+        }
+        runner = ActionRunner(context={'campaign_after': campaign, 'diff': diff})
+        step = SimpleNamespace(
+            action_type='TREE_STATS_BY_PATHS',
+            action_config={
+                'state_input': 'campaign_after',
+                'paths_input': 'diff',
+                'path_field': 'path',
+                'branch_spec': {
+                    'branch_level_node': 'paths',
+                    'leaf_collection': 'offers',
+                    'leaf_flags': ['enabled'],
+                },
+                'metrics': {'count_total_leaves': True, 'count_enabled_leaves': True},
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result['summary']['requested_paths'], 2)
+        self.assertEqual(result['summary']['resolved_branches'], 0)
+        self.assertEqual(result['summary']['unresolved_paths'], 2)
+        reasons = {row['reason'] for row in result['unresolved']}
+        self.assertIn('branch_not_found', reasons)
+        self.assertIn('branch_level_node_not_found', reasons)
+
+
 class ScenarioStepContractValidationTests(TestCase):
     """Contracts for ScenarioStep polymorphism (scenario_step_contracts)."""
 

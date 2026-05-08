@@ -39,6 +39,7 @@
             'MERGE': '{\n    "input_a": "context.list_a",\n    "input_b": "context.list_b",\n    "join_key_a": "id",\n    "join_key_b": "other_id",\n    "match_type": "exact",\n    "how": "left"\n}',
             'FILTER': '{\n    "input": "context.list_to_filter",\n    "match": "all",\n    "filters": [\n        {\n            "field": "status",\n            "operator": "==",\n            "value": "active"\n        }\n    ]\n}',
             'TRANSFORM': '{\n    "input": "context.list_to_transform",\n    "rename": {\n        "old_field": "new_field"\n    }\n}',
+            'TREE_STATS_BY_PATHS': '{\n    "state_input": "context.campaign_after",\n    "paths_input": "context.diff.changes",\n    "path_field": "path",\n    "branch_spec": {\n        "branch_level_node": "paths",\n        "leaf_collection": "offers",\n        "leaf_id_field": "offerId",\n        "leaf_flags": ["enabled"]\n    },\n    "metrics": {\n        "count_total_leaves": true,\n        "count_enabled_leaves": true\n    }\n}',
             'ENRICH': '{\n    "input": "context.main_list",\n    "source": "context.source_list",\n    "join": {\n        "main_key_field": "source_key_field"\n    },\n    "update_field": "list_field_in_main_to_extend",\n    "operation": "extend",\n    "mapping": {\n        "new_field": "source.source_field",\n        "const_id": -1\n    },\n    "unique_keys": ["id"]\n}',
             'FLATTEN_COLLECTION': '{\n    "input": "item",\n    "list_field": "source",\n    "parent_key": "campaignId",\n    "item_key": "referer"\n}'
         };
