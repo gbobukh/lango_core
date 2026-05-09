@@ -161,8 +161,8 @@ class Tracker(models.Model):
         return {}
 
     class Meta:
-        verbose_name = "Tracker"
-        verbose_name_plural = "Trackers"
+        verbose_name = "Tracker / Platform"
+        verbose_name_plural = "Trackers / Platforms"
 
 
 class ApiAuthID(models.Model):
