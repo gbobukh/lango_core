@@ -480,7 +480,7 @@ class ActionRunner:
         self._log(f"DICT_TO_LIST: {len(result)} items from '{input_name}'")
         return result
 
-    def _run_tree_stats_by_paths(self, config):
+    def _run_tree_stats_by_paths_legacy(self, config):
         """
         Computes branch-level leaf stats from changed JSON paths.
 
@@ -696,6 +696,266 @@ class ActionRunner:
             f"resolved_branches={len(branches)}, unresolved={len(unresolved)}"
         )
         return result
+
+    def _run_tree_stats_by_paths(self, config):
+        """
+        TREE_STATS_BY_PATHS returns a reshaped payload:
+
+        - ``by_branch``: object keyed by resolved branch_path; each value has only repeatable
+          blocks `{prefix}_path`, `{prefix}_total`, `{prefix}_enabled`, `{prefix}_ids``.
+        - Leaf collection (from branch_spec.leaf_collection) always gets a block using the
+          sanitized collection name as prefix (e.g. ``offers_*``).
+
+        Intermediate levels are optional ``node_metrics`` entries::
+
+            {"name": "rules", "segment": "rules", "path_style": "upto_named_token",
+             "item_flags": ["enabled"], "item_id_field": null}
+            {"name": "paths", "segment": "paths", "path_style": "parent_plus_named_token",
+             "item_flags": ["enabled"], "item_id_field": null}
+
+        path_style:
+          - ``upto_named_token`` — slice branch_path tokens up through the first literal
+            ``segment`` (e.g. ``… .rules`` for the rules array).
+          - ``parent_plus_named_token`` — slice tokens before ``segment``, then append
+            ``segment`` (e.g. ``… .rules[N].paths`` for sibling paths arrays).
+
+        If ``segment`` is omitted for ``parent_plus_named_token``, branch_spec.branch_level_node
+        is used.
+        """
+        result = self._run_tree_stats_by_paths_legacy(config)
+
+        branches = result.get('branches')
+        if not isinstance(branches, list):
+            return result
+
+        summary = result.get('summary')
+        unresolved = result.get('unresolved')
+        if not isinstance(summary, dict):
+            summary = {}
+        if not isinstance(unresolved, list):
+            unresolved = []
+
+        state_input = config.get('state_input')
+        state_obj = self._resolve_variable(state_input)
+        if not isinstance(state_obj, dict):
+            summary_out = dict(summary)
+            summary_out['resolved_branches'] = 0
+            payload = {'summary': summary_out, 'by_branch': {}, 'unresolved': unresolved}
+            self._log(
+                "TREE_STATS_BY_PATHS: state_input not a dict — empty by_branch"
+            )
+            return payload
+
+        branch_spec = config.get('branch_spec') or {}
+        branch_level_node = branch_spec.get('branch_level_node')
+        if not isinstance(branch_level_node, str) or not branch_level_node.strip():
+            summary_out = dict(summary)
+            summary_out['resolved_branches'] = 0
+            payload = {'summary': summary_out, 'by_branch': {}, 'unresolved': unresolved}
+            self._log(
+                "TREE_STATS_BY_PATHS: missing branch_level_node — empty by_branch"
+            )
+            return payload
+        branch_level_node = branch_level_node.strip()
+
+        leaf_collection = branch_spec.get('leaf_collection')
+        if not isinstance(leaf_collection, str) or not leaf_collection.strip():
+            summary_out = dict(summary)
+            summary_out['resolved_branches'] = 0
+            payload = {'summary': summary_out, 'by_branch': {}, 'unresolved': unresolved}
+            return payload
+        leaf_collection = leaf_collection.strip()
+        leaf_flags = branch_spec.get('leaf_flags') or []
+        if not isinstance(leaf_flags, list):
+            leaf_flags = []
+        leaf_id_field = branch_spec.get('leaf_id_field')
+
+        def _tokenize(path):
+            if not isinstance(path, str):
+                return []
+            tokens = []
+            buf = []
+            i = 0
+            while i < len(path):
+                ch = path[i]
+                if ch == '.':
+                    if buf:
+                        tokens.append(''.join(buf))
+                        buf = []
+                    i += 1
+                    continue
+                if ch == '[':
+                    if buf:
+                        tokens.append(''.join(buf))
+                        buf = []
+                    end = path.find(']', i)
+                    if end == -1:
+                        return []
+                    tokens.append(path[i : end + 1])
+                    i = end + 1
+                    continue
+                buf.append(ch)
+                i += 1
+            if buf:
+                tokens.append(''.join(buf))
+            return [t for t in tokens if t]
+
+        def _tokens_to_path(tokens):
+            out = ''
+            for tok in tokens:
+                if tok.startswith('['):
+                    out += tok
+                else:
+                    out = tok if not out else f"{out}.{tok}"
+            return out
+
+        def _normalize_bool(v):
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)):
+                return v != 0
+            if isinstance(v, str):
+                return v.strip().lower() in ('1', 'true', 'yes', 'on')
+            return False
+
+        def _safe_prefix(s):
+            if not isinstance(s, str):
+                return ''
+            return re.sub(r'[^a-z0-9_]', '_', s.strip().lower())
+
+        def _collection_path(branch_tokens, path_style, segment):
+            if segment not in branch_tokens:
+                return None
+            i = branch_tokens.index(segment)
+            if path_style == 'upto_named_token':
+                return _tokens_to_path(branch_tokens[: i + 1])
+            if path_style == 'parent_plus_named_token':
+                return _tokens_to_path(branch_tokens[:i] + [segment])
+            return None
+
+        def _summarize_collection(coll, item_flags, id_field):
+            """Totals + enabled leaf count (logical AND across item_flags) + IDs (field or index)."""
+            if not isinstance(coll, list):
+                return 0, 0, []
+            flags = item_flags if isinstance(item_flags, list) else []
+            total = len(coll)
+            enabled = 0
+            ids = []
+            for idx, item in enumerate(coll):
+                if isinstance(item, dict):
+                    if flags:
+                        if all(
+                            _normalize_bool(_resolve_path(item, f.strip()))
+                            for f in flags
+                            if isinstance(f, str) and f.strip()
+                        ):
+                            enabled += 1
+                    if id_field and isinstance(id_field, str) and id_field.strip() and id_field in item:
+                        ids.append(item.get(id_field))
+                    else:
+                        ids.append(idx)
+                else:
+                    ids.append(idx)
+            return total, enabled, ids
+
+        raw_metrics = config.get('node_metrics')
+        node_specs = []
+        if isinstance(raw_metrics, list):
+            for m in raw_metrics:
+                if not isinstance(m, dict):
+                    continue
+                name_p = _safe_prefix(m.get('name'))
+                path_style = (m.get('path_style') or '').strip()
+                seg = m.get('segment')
+                segment = seg.strip() if isinstance(seg, str) and seg.strip() else None
+                item_flags = m.get('item_flags', ['enabled'])
+                if not isinstance(item_flags, list):
+                    item_flags = ['enabled']
+                id_field = m.get('item_id_field')
+
+                if not name_p or path_style not in ('upto_named_token', 'parent_plus_named_token'):
+                    continue
+                if not segment:
+                    if path_style == 'parent_plus_named_token':
+                        segment = branch_level_node
+                    else:
+                        continue
+                node_specs.append(
+                    {
+                        'prefix': name_p,
+                        'path_style': path_style,
+                        'segment': segment,
+                        'item_flags': item_flags,
+                        'item_id_field': id_field if isinstance(id_field, str) and id_field.strip() else None,
+                    }
+                )
+
+        leaf_prefix = _safe_prefix(leaf_collection) or leaf_collection.lower()
+
+        by_branch = {}
+
+        def _summarize_leaf_block(branch_path, branch_obj):
+            coll_path_str = f"{branch_path}.{leaf_collection}"
+            leaves = (
+                branch_obj.get(leaf_collection, _MISSING) if isinstance(branch_obj, dict) else _MISSING
+            )
+            if leaves is _MISSING or not isinstance(leaves, list):
+                return {}
+
+            lt, le, lids = _summarize_collection(leaves, leaf_flags, leaf_id_field)
+            return {
+                f'{leaf_prefix}_path': coll_path_str,
+                f'{leaf_prefix}_total': lt,
+                f'{leaf_prefix}_enabled': le,
+                f'{leaf_prefix}_ids': lids,
+            }
+
+        for branch_info in branches:
+            if not isinstance(branch_info, dict):
+                continue
+            branch_path = branch_info.get('branch_path')
+            if not isinstance(branch_path, str) or not branch_path:
+                continue
+
+            branch_obj = _resolve_path(state_obj, branch_path)
+            if branch_obj is _MISSING or not isinstance(branch_obj, dict):
+                continue
+
+            block = _summarize_leaf_block(branch_path, branch_obj)
+
+            bp_tokens = _tokenize(branch_path)
+            if not bp_tokens:
+                by_branch[branch_path] = block
+                continue
+
+            for spec in node_specs:
+                coll_path_str = _collection_path(bp_tokens, spec['path_style'], spec['segment'])
+                if not coll_path_str:
+                    continue
+                coll_holder = _resolve_path(state_obj, coll_path_str)
+                if coll_holder is _MISSING or not isinstance(coll_holder, list):
+                    continue
+
+                ct, ce, cids = _summarize_collection(
+                    coll_holder, spec['item_flags'], spec['item_id_field']
+                )
+                pfx = spec['prefix']
+                block[f'{pfx}_path'] = coll_path_str
+                block[f'{pfx}_total'] = ct
+                block[f'{pfx}_enabled'] = ce
+                block[f'{pfx}_ids'] = cids
+
+            by_branch[branch_path] = block
+
+        summary_out = dict(summary)
+        summary_out['resolved_branches'] = len(by_branch)
+        payload = {'summary': summary_out, 'by_branch': by_branch, 'unresolved': unresolved}
+        self._log(
+            f"TREE_STATS_BY_PATHS: requested_paths={summary_out.get('requested_paths')}, "
+            f"resolved_branches={len(by_branch)}, "
+            f"unresolved={summary_out.get('unresolved_paths')}"
+        )
+        return payload
 
     def _run_transform(self, config):
         """

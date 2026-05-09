@@ -243,22 +243,18 @@ class TreeStatsByPathsActionTests(TestCase):
         self.assertEqual(result['summary']['requested_paths'], 3)
         self.assertEqual(result['summary']['resolved_branches'], 2)
         self.assertEqual(result['summary']['unresolved_paths'], 0)
-        self.assertEqual(len(result['branches']), 2)
+        self.assertEqual(len(result['by_branch']), 2)
 
-        b0 = next(
-            b for b in result['branches'] if b['branch_path'] == 'customRotation.rules[0].paths[0]'
-        )
-        b1 = next(
-            b for b in result['branches'] if b['branch_path'] == 'customRotation.rules[1].paths[0]'
-        )
+        b0 = result['by_branch']['customRotation.rules[0].paths[0]']
+        b1 = result['by_branch']['customRotation.rules[1].paths[0]']
 
-        self.assertEqual(b0['total_leaves'], 2)
-        self.assertEqual(b0['enabled_leaves'], 1)
-        self.assertEqual(b0['leaf_ids'], [50, 60])
+        self.assertEqual(b0['offers_total'], 2)
+        self.assertEqual(b0['offers_enabled'], 1)
+        self.assertEqual(b0['offers_ids'], [50, 60])
 
-        self.assertEqual(b1['total_leaves'], 1)
-        self.assertEqual(b1['enabled_leaves'], 0)
-        self.assertEqual(b1['leaf_ids'], [91])
+        self.assertEqual(b1['offers_total'], 1)
+        self.assertEqual(b1['offers_enabled'], 0)
+        self.assertEqual(b1['offers_ids'], [91])
 
     def test_tree_stats_by_paths_reports_unresolved_paths(self):
         campaign = {
@@ -298,6 +294,193 @@ class TreeStatsByPathsActionTests(TestCase):
         reasons = {row['reason'] for row in result['unresolved']}
         self.assertIn('branch_not_found', reasons)
         self.assertIn('branch_level_node_not_found', reasons)
+
+    def test_tree_stats_by_paths_leaf_block_only(self):
+        """Without node_metrics action emits the leaf collection block (e.g. offers_*)."""
+        campaign = {
+            'customRotation': {
+                'rules': [
+                    {
+                        'enabled': False,
+                        'paths': [
+                            {
+                                'enabled': True,
+                                'offers': [
+                                    {'offerId': 50, 'enabled': True},
+                                    {'offerId': 49, 'enabled': False},
+                                ],
+                            },
+                            {
+                                'enabled': False,
+                                'offers': [
+                                    {'offerId': 48, 'enabled': True},
+                                    {'offerId': 47, 'enabled': True},
+                                ],
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+        diff = {
+            'changes': [
+                {'path': 'customRotation.rules[0].paths[0].offers[0].enabled'},
+                {'path': 'customRotation.rules[0].paths[1].offers[1].enabled'},
+            ]
+        }
+        runner = ActionRunner(context={'campaign_after': campaign, 'diff': diff})
+        step = SimpleNamespace(
+            action_type='TREE_STATS_BY_PATHS',
+            action_config={
+                'state_input': 'campaign_after',
+                'paths_input': 'diff.changes',
+                'path_field': 'path',
+                'branch_spec': {
+                    'branch_level_node': 'paths',
+                    'leaf_collection': 'offers',
+                    'leaf_id_field': 'offerId',
+                    'leaf_flags': ['enabled'],
+                },
+                'metrics': {'count_total_leaves': True, 'count_enabled_leaves': True},
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result['summary']['requested_paths'], 2)
+        self.assertEqual(result['summary']['resolved_branches'], 2)
+        self.assertEqual(result['summary']['unresolved_paths'], 0)
+        self.assertIn('by_branch', result)
+        self.assertNotIn('branches', result)
+
+        bp0 = 'customRotation.rules[0].paths[0]'
+        bp1 = 'customRotation.rules[0].paths[1]'
+        p0 = result['by_branch'][bp0]
+        p1 = result['by_branch'][bp1]
+
+        self.assertEqual(set(p0.keys()), {'offers_path', 'offers_total', 'offers_enabled', 'offers_ids'})
+        self.assertEqual(p0['offers_path'], f'{bp0}.offers')
+        self.assertEqual(p0['offers_total'], 2)
+        self.assertEqual(p0['offers_enabled'], 1)
+        self.assertEqual(p0['offers_ids'], [50, 49])
+
+        self.assertEqual(p1['offers_path'], f'{bp1}.offers')
+        self.assertEqual(p1['offers_total'], 2)
+        self.assertEqual(p1['offers_enabled'], 2)
+        self.assertEqual(p1['offers_ids'], [48, 47])
+
+    def test_tree_stats_by_paths_node_metrics_unified_levels(self):
+        campaign = {
+            'customRotation': {
+                'rules': [
+                    {
+                        'enabled': True,
+                        'paths': [
+                            {
+                                'enabled': True,
+                                'offers': [
+                                    {'offerId': 50, 'enabled': True},
+                                    {'offerId': 49, 'enabled': False},
+                                ],
+                            },
+                            {
+                                'enabled': False,
+                                'offers': [
+                                    {'offerId': 48, 'enabled': True},
+                                ],
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+        diff = {
+            'changes': [
+                {'path': 'customRotation.rules[0].paths[0].offers[0].enabled'},
+                {'path': 'customRotation.rules[0].paths[1].offers[0].enabled'},
+            ]
+        }
+        runner = ActionRunner(context={'campaign_after': campaign, 'diff': diff})
+        step = SimpleNamespace(
+            action_type='TREE_STATS_BY_PATHS',
+            action_config={
+                'state_input': 'campaign_after',
+                'paths_input': 'diff.changes',
+                'path_field': 'path',
+                'branch_spec': {
+                    'branch_level_node': 'paths',
+                    'leaf_collection': 'offers',
+                    'leaf_id_field': 'offerId',
+                    'leaf_flags': ['enabled'],
+                },
+                'metrics': {'count_total_leaves': True, 'count_enabled_leaves': True},
+                'node_metrics': [
+                    {
+                        'name': 'rules',
+                        'segment': 'rules',
+                        'path_style': 'upto_named_token',
+                        'item_flags': ['enabled'],
+                    },
+                    {
+                        'name': 'paths',
+                        'segment': 'paths',
+                        'path_style': 'parent_plus_named_token',
+                        'item_flags': ['enabled'],
+                    },
+                ],
+            },
+        )
+
+        result = runner.run(step)
+        self.assertEqual(result['summary']['resolved_branches'], 2)
+
+        bp0 = 'customRotation.rules[0].paths[0]'
+        bp1 = 'customRotation.rules[0].paths[1]'
+        p0 = result['by_branch'][bp0]
+        p1 = result['by_branch'][bp1]
+
+        expected_keys = {
+            'rules_path',
+            'rules_total',
+            'rules_enabled',
+            'rules_ids',
+            'paths_path',
+            'paths_total',
+            'paths_enabled',
+            'paths_ids',
+            'offers_path',
+            'offers_total',
+            'offers_enabled',
+            'offers_ids',
+        }
+        self.assertEqual(set(p0.keys()), expected_keys)
+        self.assertEqual(set(p1.keys()), expected_keys)
+
+        # One rule in customRotation.rules; that rule is enabled.
+        self.assertEqual(p0['rules_path'], 'customRotation.rules')
+        self.assertEqual(p0['rules_total'], 1)
+        self.assertEqual(p0['rules_enabled'], 1)
+        self.assertEqual(p0['rules_ids'], [0])
+
+        # Under that rule: two paths, one enabled.
+        self.assertEqual(p0['paths_path'], 'customRotation.rules[0].paths')
+        self.assertEqual(p0['paths_total'], 2)
+        self.assertEqual(p0['paths_enabled'], 1)
+        self.assertEqual(p0['paths_ids'], [0, 1])
+
+        self.assertEqual(p0['offers_path'], f'{bp0}.offers')
+        self.assertEqual(p0['offers_total'], 2)
+        self.assertEqual(p0['offers_enabled'], 1)
+        self.assertEqual(p0['offers_ids'], [50, 49])
+
+        self.assertEqual(p1['rules_path'], 'customRotation.rules')
+        self.assertEqual(p1['paths_path'], 'customRotation.rules[0].paths')
+        self.assertEqual(p1['paths_total'], 2)
+        self.assertEqual(p1['paths_enabled'], 1)
+        self.assertEqual(p1['offers_path'], f'{bp1}.offers')
+        self.assertEqual(p1['offers_total'], 1)
+        self.assertEqual(p1['offers_enabled'], 1)
+        self.assertEqual(p1['offers_ids'], [48])
 
 
 class ScenarioStepContractValidationTests(TestCase):
