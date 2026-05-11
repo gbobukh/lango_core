@@ -290,6 +290,17 @@ class ServiceEndpointAdmin(LifecycleAdminMixin, admin.ModelAdmin):
             }))
         return fieldsets
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(visible_to=request.user).distinct()
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change:
+            obj.visible_to.add(request.user)
+
 @admin.register(ServiceMethod)
 class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
     form = ServiceMethodForm
