@@ -1,5 +1,6 @@
-from django.db import models
 from django.conf import settings
+from django.contrib.auth.models import User
+from django.db import models
 
 
 class Frequency(models.Model):
@@ -50,6 +51,12 @@ class Frequency(models.Model):
         null=True,
         blank=True,
         help_text="Month (1-12). Used for monthly schedules."
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_frequencies',
+        blank=True,
+        help_text="Users who can view and use this frequency.",
     )
 
     class Meta:
@@ -120,6 +127,12 @@ class ScheduledWorkflow(models.Model):
     is_active = models.BooleanField(
         default=True,
         help_text="Uncheck to disable this schedule"
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_scheduled_workflows',
+        blank=True,
+        help_text="Users who can view and use this scheduled workflow.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

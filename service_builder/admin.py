@@ -21,6 +21,7 @@ from .forms import ActionConfigLibraryForm, ServiceEndpointForm, ServiceMethodFo
 
 from .widgets import ApiBatchConfigWidget, ArgumentMappingWidget, PrettyJSONWidget
 from integrations.models import Tracker
+from integrations.admin_access import AccessControlAdminMixin
 from integrations.widgets import KeyDefinitionsWidget
 
 from django.urls import path
@@ -301,6 +302,9 @@ class ServiceEndpointAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         if not change:
             obj.visible_to.add(request.user)
 
+    class Media:
+        js = ('integrations/js/move_access_control.js',)
+
 @admin.register(ServiceMethod)
 class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
     form = ServiceMethodForm
@@ -367,6 +371,7 @@ class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         }
         js = (
             'service_builder/js/admin_locking_v2.js',
+            'integrations/js/move_access_control.js',
         )
 
     def get_queryset(self, request):
@@ -757,7 +762,7 @@ class ScenarioStepInlineAdminFormSet(admin_helpers.InlineAdminFormSet):
 
 
 @admin.register(ActionConfigLibrary)
-class ActionConfigLibraryAdmin(admin.ModelAdmin):
+class ActionConfigLibraryAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     form = ActionConfigLibraryForm
     list_display = ('name', 'action_type', 'is_active', 'updated_at')
     list_filter = ('action_type', 'is_active')
@@ -834,6 +839,7 @@ class ScenarioAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         }
         js = (
             'service_builder/js/admin_locking_v2.js',
+            'integrations/js/move_access_control.js',
         )
 
     def get_queryset(self, request):
@@ -987,7 +993,7 @@ class WorkflowStepInline(LifecycleInlineMixin, admin.StackedInline):
 from integrations.widgets import KeyDefinitionsWidget
 
 @admin.register(Workflow)
-class WorkflowAdmin(LifecycleAdminMixin, admin.ModelAdmin):
+class WorkflowAdmin(LifecycleAdminMixin, AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'validation_status', 'created_at', 'updated_at', 'run_test_link', 'get_lock_status')
     search_fields = ('name',)
 
@@ -1009,10 +1015,6 @@ class WorkflowAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         ('Workflow Interface', {
             'fields': ('get_workflow_outputs',),
             'description': "Outputs are automatically derived from the Last active steps."
-        }),
-        ('Access Control', {
-            'fields': ('visible_to',),
-            'classes': ('collapse',),
         }),
     )
 
@@ -1093,19 +1095,10 @@ class WorkflowAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         css = {
             'all': ('service_builder/css/admin_locking_v2.css',)
         }
-        js = ('service_builder/js/admin_locking_v2.js',)
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(visible_to=request.user).distinct()
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        if not change:  # Only on creation
-            obj.visible_to.add(request.user)
-
+        js = (
+            'service_builder/js/admin_locking_v2.js',
+            'integrations/js/move_access_control.js',
+        )
 
 
 class BusinessActionVariantInline(LifecycleInlineMixin, admin.StackedInline):
@@ -1147,7 +1140,7 @@ class BusinessActionVariantInline(LifecycleInlineMixin, admin.StackedInline):
         )
 
 @admin.register(BusinessAction)
-class BusinessActionAdmin(LifecycleAdminMixin, admin.ModelAdmin):
+class BusinessActionAdmin(LifecycleAdminMixin, AccessControlAdminMixin, admin.ModelAdmin):
     form = BusinessActionForm
     list_display = ('name', 'validation_status', 'get_lock_status', 'run_test_link')
     search_fields = ('name',)
@@ -1166,32 +1159,13 @@ class BusinessActionAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         ('Current Validation', {
              'fields': ('validation_status', 'mark_as_test')
         }),
-        ('Access Control', {
-            'classes': ('collapse', 'access-control-fieldset'),
-            'fields': ('visible_to',),
-            'description': 'Select users who can view and use this action.'
-        }),
     )
     readonly_fields = ('validation_status',)
-    filter_horizontal = ('visible_to',)
 
     def run_test_link(self, obj):
         url = f"execute-test/?action_id={obj.pk}"
         return format_html('<a class="button" href="{}" target="_blank">Run Test</a>', url)
     run_test_link.short_description = "Test"
-
-    # ... (get_lock_status is here, verified in view_file)
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(visible_to=request.user).distinct()
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        if not change:  # Only on creation
-            obj.visible_to.add(request.user)
 
     def get_lock_status(self, obj):
         is_locked = False
@@ -1220,7 +1194,10 @@ class BusinessActionAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         css = {
             'all': ('service_builder/css/admin_locking_v2.css',)
         }
-        js = ('service_builder/js/admin_locking_v2.js',)
+        js = (
+            'service_builder/js/admin_locking_v2.js',
+            'integrations/js/move_access_control.js',
+        )
 
     def get_urls(self):
         urls = super().get_urls()

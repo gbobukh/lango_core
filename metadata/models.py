@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db import models
 
 class TargetParameter(models.Model):
@@ -10,6 +11,12 @@ class TargetParameter(models.Model):
         default=list, 
         blank=True, 
         help_text="List of predefined values (e.g. ['US', 'UK', 'CA'])"
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_target_parameters',
+        blank=True,
+        help_text="Users who can view and use this target parameter.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -32,6 +39,12 @@ class PublisherConfig(models.Model):
     )
     config = models.JSONField(default=dict, blank=True, help_text="Configuration state for parameters")
     is_locked = models.BooleanField(default=True, help_text="Uncheck to edit configuration. Automatically locks on save.")
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_publisher_configs',
+        blank=True,
+        help_text="Users who can view and use this publisher config.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -79,6 +92,12 @@ class CompatibilityMatrix(models.Model):
         help_text="List of allowed values for the target parameter (e.g., ['Mobile', 'Tablet'])"
     )
     is_locked = models.BooleanField(default=True, help_text="Uncheck to edit rule. Automatically locks on save.")
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_compatibility_matrices',
+        blank=True,
+        help_text="Users who can view and use this compatibility rule.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -98,6 +117,12 @@ class CompatibilityMatrix(models.Model):
 
 class TrafficType(models.Model):
     name = models.CharField(max_length=255, unique=True)
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_traffic_types',
+        blank=True,
+        help_text="Users who can view and use this traffic type.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -116,7 +141,13 @@ class GlobalVariable(models.Model):
     """
     name = models.CharField(max_length=255, unique=True, help_text="Name of the standard system variable (e.g. 'std_subid')")
     description = models.TextField(blank=True, help_text="Description of what this variable represents")
-    
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_global_variables',
+        blank=True,
+        help_text="Users who can view and use this global variable.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -151,6 +182,12 @@ class TrackerConfig(models.Model):
         help_text="Configuration state: {'GlobalVarName': 'TrackerKey'}"
     )
     is_locked = models.BooleanField(default=True, help_text="Uncheck to edit configuration. Automatically locks on save.")
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_tracker_configs',
+        blank=True,
+        help_text="Users who can view and use this tracker response mapping.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -171,6 +208,12 @@ class TrackerConfig(models.Model):
 class SegmentAttributeType(models.Model):
     """Allowed type/category for a segment attribute."""
     name = models.CharField(max_length=255, unique=True)
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_segment_attribute_types',
+        blank=True,
+        help_text="Users who can view and use this segment attribute type.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -192,6 +235,12 @@ class SegmentAttribute(models.Model):
         on_delete=models.PROTECT,
         related_name='attributes',
         help_text="Type from Segments Attributes Types",
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_segment_attributes',
+        blank=True,
+        help_text="Users who can view and use this segment attribute.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

@@ -469,6 +469,12 @@ class ActionConfigLibrary(models.Model):
         default=True,
         help_text="Hide outdated presets without deleting them.",
     )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_action_config_libraries',
+        blank=True,
+        help_text="Users who can view and use this action config library entry.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

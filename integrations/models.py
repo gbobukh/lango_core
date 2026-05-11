@@ -391,6 +391,12 @@ class SystemConfig(models.Model):
     key = models.CharField(max_length=255, unique=True, help_text="Configuration key (e.g. 'date_input_formats')")
     value = models.JSONField(default=dict, help_text="Configuration value (JSON)")
     description = models.TextField(blank=True, help_text="Description of what this setting controls")
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_system_configs',
+        blank=True,
+        help_text="Users who can view and use this system configuration.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

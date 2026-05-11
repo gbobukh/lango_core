@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.db import models
+from integrations.admin_access import AccessControlAdminMixin
 from .models import (
     TargetParameter,
     PublisherConfig,
@@ -12,7 +13,7 @@ from .models import (
 from .widgets import PublisherConfigWidget, KeyDefinitionsWidget
 
 @admin.register(TargetParameter)
-class TargetParameterAdmin(admin.ModelAdmin):
+class TargetParameterAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'created_at')
     search_fields = ('name',)
     # Use KeyDefinitionsWidget for the 'values' JSONField
@@ -21,7 +22,7 @@ class TargetParameterAdmin(admin.ModelAdmin):
     }
 
 @admin.register(PublisherConfig)
-class PublisherConfigAdmin(admin.ModelAdmin):
+class PublisherConfigAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('partner_account', 'updated_at')
     list_filter = ('partner_account__account_type',)
     search_fields = ('partner_account__name',)
@@ -50,26 +51,26 @@ from .forms import CompatibilityMatrixForm
 import json
 
 @admin.register(TrafficType)
-class TrafficTypeAdmin(admin.ModelAdmin):
+class TrafficTypeAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'created_at')
     search_fields = ('name',)
 
 
 @admin.register(SegmentAttributeType)
-class SegmentAttributeTypeAdmin(admin.ModelAdmin):
+class SegmentAttributeTypeAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'created_at')
     search_fields = ('name',)
 
 
 @admin.register(SegmentAttribute)
-class SegmentAttributeAdmin(admin.ModelAdmin):
+class SegmentAttributeAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'attribute_type', 'created_at')
     list_filter = ('attribute_type',)
     search_fields = ('name',)
 
 
 @admin.register(CompatibilityMatrix)
-class CompatibilityMatrixAdmin(admin.ModelAdmin):
+class CompatibilityMatrixAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     form = CompatibilityMatrixForm
     list_display = ('subject_parameter', 'subject_value', 'target_parameter', 'allowed_values_preview')
     list_filter = ('subject_parameter', 'target_parameter')
@@ -142,7 +143,7 @@ from .models import GlobalVariable, TrackerConfig
 from .widgets import TrackerConfigWidget
 
 @admin.register(GlobalVariable)
-class GlobalVariableAdmin(admin.ModelAdmin):
+class GlobalVariableAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'description')
     search_fields = ('name',)
     # inlines = [] # Removed
@@ -151,7 +152,7 @@ class GlobalVariableAdmin(admin.ModelAdmin):
         js = ('metadata/js/global_variable_admin.js',)
 
 @admin.register(TrackerConfig)
-class TrackerConfigAdmin(admin.ModelAdmin):
+class TrackerConfigAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('tracker', 'updated_at')
     search_fields = ('tracker__name',)
     # list_filter = ('is_locked',) # Removed as per request

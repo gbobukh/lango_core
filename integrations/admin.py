@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import ApiAuthType, Tracker, ApiAuthID, PartnerAccount, PartnerAccountType, PartnerAccountTrackerIdentifier, SystemConfig
 from .forms import ApiAuthTypeForm, TrackerForm, ApiAuthIDForm, PartnerAccountForm, PartnerAccountTypeForm, PartnerAccountTrackerIdentifierForm, SystemConfigForm
 from .views import TestApiAuthView
+from .admin_access import AccessControlAdminMixin
 
 @admin.register(ApiAuthType)
 class ApiAuthTypeAdmin(admin.ModelAdmin):
@@ -251,7 +252,7 @@ class PartnerAccountTypeAdmin(admin.ModelAdmin):
             obj.visible_to.add(request.user)
 
 @admin.register(SystemConfig)
-class SystemConfigAdmin(admin.ModelAdmin):
+class SystemConfigAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     form = SystemConfigForm
     list_display = ('key', 'description', 'updated_at')
     search_fields = ('key', 'description')

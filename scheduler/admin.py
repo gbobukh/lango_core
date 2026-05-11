@@ -1,20 +1,21 @@
 from django.contrib import admin
 from django.urls import path
 
+from integrations.admin_access import AccessControlAdminMixin
 from .models import Frequency, ScheduledWorkflow
 from .views import CrontabView, GetWorkflowArgumentsView, RunScheduledWorkflowView
 from .widgets import ScheduledWorkflowArgumentMappingWidget
 
 
 @admin.register(Frequency)
-class FrequencyAdmin(admin.ModelAdmin):
+class FrequencyAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'interval_unit', 'interval_value', 'minute', 'hour', 'day_of_month', 'day_of_week', 'month')
     list_filter = ('interval_unit',)
     search_fields = ('name',)
 
 
 @admin.register(ScheduledWorkflow)
-class ScheduledWorkflowAdmin(admin.ModelAdmin):
+class ScheduledWorkflowAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_display = ('id', 'workflow', 'frequency', 'get_arguments_summary', 'is_active', 'created_at')
     list_filter = ('is_active',)
     search_fields = ('workflow__name',)
