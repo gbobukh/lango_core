@@ -4,10 +4,10 @@ from django.utils.html import format_html
 from .models import ApiAuthType, Tracker, ApiAuthID, PartnerAccount, PartnerAccountType, PartnerAccountTrackerIdentifier, SystemConfig
 from .forms import ApiAuthTypeForm, TrackerForm, ApiAuthIDForm, PartnerAccountForm, PartnerAccountTypeForm, PartnerAccountTrackerIdentifierForm, SystemConfigForm
 from .views import TestApiAuthView
-from .admin_access import AccessControlAdminMixin
+from .admin_access import AccessControlAdminMixin, VisibleToAdminMixin, VisibleToInlineMixin
 
 @admin.register(ApiAuthType)
-class ApiAuthTypeAdmin(admin.ModelAdmin):
+class ApiAuthTypeAdmin(VisibleToAdminMixin, admin.ModelAdmin):
     form = ApiAuthTypeForm
     list_display = ('name', 'get_key_definitions_str', 'created_at')
     search_fields = ('name',)
@@ -56,7 +56,7 @@ class ApiAuthTypeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Tracker)
-class TrackerAdmin(admin.ModelAdmin):
+class TrackerAdmin(VisibleToAdminMixin, admin.ModelAdmin):
     form = TrackerForm
     list_display = ('name', 'created_at')
     search_fields = ('name',)
@@ -94,7 +94,7 @@ class TrackerAdmin(admin.ModelAdmin):
 
 
 @admin.register(ApiAuthID)
-class ApiAuthIDAdmin(admin.ModelAdmin):
+class ApiAuthIDAdmin(VisibleToAdminMixin, admin.ModelAdmin):
     form = ApiAuthIDForm
     list_display = ('account_name', 'tracker', 'auth_type', 'request_url', 'created_at', 'run_test_link')
     search_fields = ('account_name', 'tracker__name', 'request_url')
@@ -142,37 +142,17 @@ class ApiAuthIDAdmin(admin.ModelAdmin):
         if not change:  # Only on creation
             obj.visible_to.add(request.user)
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "auth_type":
-            if not request.user.is_superuser:
-                kwargs["queryset"] = ApiAuthType.objects.filter(visible_to=request.user)
-        if db_field.name == "tracker":
-            if not request.user.is_superuser:
-                kwargs["queryset"] = Tracker.objects.filter(visible_to=request.user)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-
-class PartnerAccountTrackerIdentifierInline(admin.TabularInline):
+class PartnerAccountTrackerIdentifierInline(VisibleToInlineMixin, admin.TabularInline):
     model = PartnerAccountTrackerIdentifier
     form = PartnerAccountTrackerIdentifierForm
     extra = 1
     fields = ('api_auth_id', 'identifying_method', 'account_id_in_tracker', 'account_name_in_tracker')
     readonly_fields = ('account_name_in_tracker',)
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "api_auth_id":
-            if not request.user.is_superuser:
-                kwargs["queryset"] = ApiAuthID.objects.filter(visible_to=request.user)
-        if db_field.name == "identifying_method":
-            # Avoid circular import at module level if possible, or just import here
-            from service_builder.models import ServiceMethod
-            if not request.user.is_superuser:
-                kwargs["queryset"] = ServiceMethod.objects.filter(visible_to=request.user)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
 
 @admin.register(PartnerAccount)
-class PartnerAccountAdmin(admin.ModelAdmin):
+class PartnerAccountAdmin(VisibleToAdminMixin, admin.ModelAdmin):
     form = PartnerAccountForm
     list_display = ('name', 'account_type', 'domain', 'created_at')
     search_fields = ('name', 'account_type__name', 'domain')
@@ -208,15 +188,9 @@ class PartnerAccountAdmin(admin.ModelAdmin):
         if not change:  # Only on creation
             obj.visible_to.add(request.user)
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "account_type":
-            if not request.user.is_superuser:
-                kwargs["queryset"] = PartnerAccountType.objects.filter(visible_to=request.user)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
 
 @admin.register(PartnerAccountType)
-class PartnerAccountTypeAdmin(admin.ModelAdmin):
+class PartnerAccountTypeAdmin(VisibleToAdminMixin, admin.ModelAdmin):
     form = PartnerAccountTypeForm
     list_display = ('name', 'created_at')
     search_fields = ('name',)

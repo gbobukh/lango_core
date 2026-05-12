@@ -1,3 +1,6 @@
+from .access_control import filter_queryset_for_user, model_has_visible_to
+
+
 def _fieldsets_without_field(fieldsets, field_name):
     """Drop a field from admin fieldsets, including nested row tuples."""
     cleaned = []
@@ -22,7 +25,29 @@ def _fieldsets_without_field(fieldsets, field_name):
     return cleaned
 
 
-class AccessControlAdminMixin:
+class VisibleToAdminMixin:
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        related_model = db_field.remote_field.model
+        if model_has_visible_to(related_model) and not request.user.is_superuser:
+            base_qs = kwargs.get('queryset', related_model.objects.all())
+            kwargs['queryset'] = filter_queryset_for_user(request.user, base_qs)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset = filter_queryset_for_user(request.user, queryset)
+        return super().get_search_results(request, queryset, search_term)
+
+
+class VisibleToInlineMixin:
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        related_model = db_field.remote_field.model
+        if model_has_visible_to(related_model) and not request.user.is_superuser:
+            base_qs = kwargs.get('queryset', related_model.objects.all())
+            kwargs['queryset'] = filter_queryset_for_user(request.user, base_qs)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class AccessControlAdminMixin(VisibleToAdminMixin):
     filter_horizontal = ('visible_to',)
 
     class Media:
@@ -47,10 +72,7 @@ class AccessControlAdminMixin:
         return fieldsets
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(visible_to=request.user).distinct()
+        return filter_queryset_for_user(request.user, super().get_queryset(request))
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)

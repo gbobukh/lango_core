@@ -13,6 +13,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 from .models import ServiceEndpoint, ServiceMethod, Scenario, Workflow, BusinessAction
 from integrations.models import ApiAuthID
+from integrations.access_control import filter_queryset_for_user, user_can_access_obj
 
 
 def _sanitize_for_json(data):
@@ -262,22 +263,25 @@ class GetMethodArgumentsView(LoginRequiredMixin, View):
     def get(self, request, method_id):
         try:
             method = ServiceMethod.objects.get(pk=method_id)
-            return JsonResponse(
-                {
-                    'arguments': method.arguments or [],
-                    'argument_types': method.payload_value_types or {},
-                }
-            )
         except ServiceMethod.DoesNotExist:
             return JsonResponse({'arguments': [], 'argument_types': {}})
+        if not user_can_access_obj(request.user, method):
+            return JsonResponse({'arguments': [], 'argument_types': {}})
+        return JsonResponse(
+            {
+                'arguments': method.arguments or [],
+                'argument_types': method.payload_value_types or {},
+            }
+        )
 
 
 @method_decorator(staff_member_required, name='dispatch')
 class GetMethodsListView(LoginRequiredMixin, View):
     def get(self, request):
-        qs = ServiceMethod.objects.select_related('service_endpoint').filter(validation_status__in=['VALID', 'TEST'])
-        if not request.user.is_superuser:
-            qs = qs.filter(visible_to=request.user).distinct()
+        qs = ServiceMethod.objects.select_related('service_endpoint').filter(
+            validation_status__in=['VALID', 'TEST']
+        )
+        qs = filter_queryset_for_user(request.user, qs)
 
         methods = []
         for method in qs.order_by('name'):
@@ -298,9 +302,11 @@ class GetScenarioArgumentsView(LoginRequiredMixin, View):
     def get(self, request, scenario_id):
         try:
             scenario = Scenario.objects.get(pk=scenario_id)
-            return JsonResponse({'arguments': scenario.arguments or []})
         except Scenario.DoesNotExist:
             return JsonResponse({'arguments': []})
+        if not user_can_access_obj(request.user, scenario):
+            return JsonResponse({'arguments': []})
+        return JsonResponse({'arguments': scenario.arguments or []})
 
 
 @method_decorator(staff_member_required, name='dispatch')
@@ -308,14 +314,16 @@ class GetScenarioDetailsView(LoginRequiredMixin, View):
     def get(self, request, scenario_id):
         try:
             scenario = Scenario.objects.get(pk=scenario_id)
-            last_step = scenario.steps.filter(is_active=True).order_by('order').last()
-            return_vars = [last_step.output_variable_name] if (last_step and last_step.output_variable_name) else []
-            return JsonResponse({
-                'arguments': scenario.arguments or [],
-                'return_variables': return_vars
-            })
         except Scenario.DoesNotExist:
             return JsonResponse({'arguments': [], 'return_variables': []})
+        if not user_can_access_obj(request.user, scenario):
+            return JsonResponse({'arguments': [], 'return_variables': []})
+        last_step = scenario.steps.filter(is_active=True).order_by('order').last()
+        return_vars = [last_step.output_variable_name] if (last_step and last_step.output_variable_name) else []
+        return JsonResponse({
+            'arguments': scenario.arguments or [],
+            'return_variables': return_vars
+        })
 
 
 @method_decorator(staff_member_required, name='dispatch')
@@ -326,12 +334,20 @@ class ResolveActionVariantView(LoginRequiredMixin, View):
         tracker_id = request.GET.get('tracker_id')
         if not action_id:
             return JsonResponse({'error': 'action_id required'}, status=400)
+        try:
+            action = BusinessAction.objects.get(pk=action_id)
+        except BusinessAction.DoesNotExist:
+            return JsonResponse({'scenario_id': None, 'arguments': []})
+        if not user_can_access_obj(request.user, action):
+            return JsonResponse({'scenario_id': None, 'arguments': []})
         variant = BusinessActionVariant.objects.filter(
             business_action_id=action_id,
             tracker_id=tracker_id or None
         ).first()
         if not variant:
             variant = BusinessActionVariant.objects.filter(business_action_id=action_id).first()
+        if variant and variant.scenario and not user_can_access_obj(request.user, variant.scenario):
+            return JsonResponse({'scenario_id': None, 'arguments': []})
         if variant:
             return JsonResponse({
                 'scenario_id': variant.scenario_id,
@@ -345,6 +361,8 @@ class GetBusinessActionArgumentsView(LoginRequiredMixin, View):
     def get(self, request, action_id):
         try:
             action = BusinessAction.objects.get(pk=action_id)
-            return JsonResponse({'arguments': action.arguments or []})
         except BusinessAction.DoesNotExist:
             return JsonResponse({'arguments': []})
+        if not user_can_access_obj(request.user, action):
+            return JsonResponse({'arguments': []})
+        return JsonResponse({'arguments': action.arguments or []})

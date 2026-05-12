@@ -1,11 +1,12 @@
-from django.http import JsonResponse
-from django.views import View
 from django.apps import apps
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.contrib.admin.views.decorators import staff_member_required
-from django.utils.decorators import method_decorator
 from django.db import models
-from django.db.models import Q
+from django.http import JsonResponse
+from django.utils.decorators import method_decorator
+from django.views import View
+
+from integrations.access_control import filter_queryset_for_user
 
 class ModelDiscoveryView(PermissionRequiredMixin, View):
     permission_required = 'service_builder.view_scenario'  # Basic permission
@@ -115,12 +116,7 @@ class ModelChoicesView(PermissionRequiredMixin, View):
             return JsonResponse({'error': 'Model not found'}, status=404)
 
         qs = model.objects.all().order_by('id')
-        # Filter by visible_to for models that have it (e.g. PartnerAccount)
-        if hasattr(model, 'visible_to') and hasattr(model.visible_to, 'field') and not request.user.is_superuser:
-            try:
-                qs = qs.filter(Q(visible_to=request.user) | Q(visible_to__isnull=True)).distinct()
-            except Exception:
-                qs = qs.filter(visible_to=request.user).distinct()
+        qs = filter_queryset_for_user(request.user, qs)
 
         choices = []
         for obj in qs:
@@ -138,11 +134,7 @@ class ModelChoicesAPIView(View):
             return JsonResponse({'error': 'Model not found'}, status=404)
 
         qs = model.objects.all().order_by('id')
-        if hasattr(model, 'visible_to') and hasattr(model.visible_to, 'field') and not request.user.is_superuser:
-            try:
-                qs = qs.filter(Q(visible_to=request.user) | Q(visible_to__isnull=True)).distinct()
-            except Exception:
-                qs = qs.filter(visible_to=request.user).distinct()
+        qs = filter_queryset_for_user(request.user, qs)
 
         choices = [{'value': str(obj.pk), 'label': str(obj)} for obj in qs]
         return JsonResponse({'choices': choices})

@@ -12,6 +12,8 @@ from django.views import View
 from django.contrib.admin.views.decorators import staff_member_required
 from django.utils.decorators import method_decorator
 
+from integrations.access_control import user_can_access_obj
+
 from .crontab import (
     get_crontab_info,
     is_scheduled_workflow_running,
@@ -157,17 +159,18 @@ class GetWorkflowArgumentsView(View):
         from service_builder.models import Workflow
         try:
             workflow = Workflow.objects.get(pk=workflow_id)
-            args = workflow.arguments or []
-            # Normalize: ensure each arg has name, type
-            normalized = []
-            for a in args:
-                if isinstance(a, str):
-                    normalized.append({'name': a, 'type': 'string'})
-                elif isinstance(a, dict):
-                    n = dict(a)
-                    n.setdefault('name', '')
-                    n.setdefault('type', 'string')
-                    normalized.append(n)
-            return JsonResponse({'arguments': normalized})
         except Workflow.DoesNotExist:
             return JsonResponse({'arguments': []})
+        if not user_can_access_obj(request.user, workflow):
+            return JsonResponse({'arguments': []})
+        args = workflow.arguments or []
+        normalized = []
+        for a in args:
+            if isinstance(a, str):
+                normalized.append({'name': a, 'type': 'string'})
+            elif isinstance(a, dict):
+                n = dict(a)
+                n.setdefault('name', '')
+                n.setdefault('type', 'string')
+                normalized.append(n)
+        return JsonResponse({'arguments': normalized})

@@ -21,7 +21,8 @@ from .forms import ActionConfigLibraryForm, ServiceEndpointForm, ServiceMethodFo
 
 from .widgets import ApiBatchConfigWidget, ArgumentMappingWidget, PrettyJSONWidget
 from integrations.models import Tracker
-from integrations.admin_access import AccessControlAdminMixin
+from integrations.admin_access import AccessControlAdminMixin, VisibleToAdminMixin, VisibleToInlineMixin
+from integrations.access_control import filter_queryset_for_user
 from integrations.widgets import KeyDefinitionsWidget
 
 from django.urls import path
@@ -219,7 +220,7 @@ class LifecycleInlineMixin:
 print("DEBUG: RELOADING SERVICE_BUILDER/ADMIN.PY")
 
 @admin.register(ServiceEndpoint)
-class ServiceEndpointAdmin(LifecycleAdminMixin, admin.ModelAdmin):
+class ServiceEndpointAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
     form = ServiceEndpointForm
     list_display = ('name', 'tracker', 'method', 'endpoint', 'validation_status', 'created_at', 'get_lock_status')
     search_fields = ('name', 'endpoint', 'tracker__name')
@@ -306,7 +307,7 @@ class ServiceEndpointAdmin(LifecycleAdminMixin, admin.ModelAdmin):
         js = ('integrations/js/move_access_control.js',)
 
 @admin.register(ServiceMethod)
-class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
+class ServiceMethodAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
     form = ServiceMethodForm
     list_display = ('name', 'service_endpoint', 'return_key', 'validation_status', 'created_at', 'run_test_link', 'get_lock_status')
     search_fields = ('name', 'service_endpoint__name')
@@ -416,12 +417,6 @@ class ServiceMethodAdmin(LifecycleAdminMixin, admin.ModelAdmin):
 
         return deleted, model_count, perms_needed, result
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "service_endpoint":
-            if not request.user.is_superuser:
-                kwargs["queryset"] = ServiceEndpoint.objects.filter(visible_to=request.user)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
 
 from .models import Scenario, ScenarioStep
 from .forms import ScenarioForm, ScenarioStepForm, effective_scenario_step_for_form
@@ -516,7 +511,7 @@ class ScenarioStepFormSet(BaseInlineFormSet):
             if output_var:
                 context_vars.add(output_var)
 
-class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
+class ScenarioStepInline(LifecycleInlineMixin, VisibleToInlineMixin, admin.StackedInline):
     model = ScenarioStep
     form = ScenarioStepForm
     formset = ScenarioStepFormSet
@@ -656,11 +651,8 @@ class ScenarioStepInline(LifecycleInlineMixin, admin.StackedInline):
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "method":
-            from .models import ServiceMethod
             qs = ServiceMethod.objects.filter(validation_status__in=['VALID', 'TEST'])
-            if not request.user.is_superuser:
-                qs = qs.filter(visible_to=request.user)
-            kwargs["queryset"] = qs
+            kwargs["queryset"] = filter_queryset_for_user(request.user, qs)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -771,7 +763,7 @@ class ActionConfigLibraryAdmin(AccessControlAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(Scenario)
-class ScenarioAdmin(LifecycleAdminMixin, admin.ModelAdmin):
+class ScenarioAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         from .api import ModelDiscoveryView, ModelFieldsView, ModelChoicesView
@@ -927,7 +919,7 @@ class ScenarioAdmin(LifecycleAdminMixin, admin.ModelAdmin):
 from .models import Workflow, WorkflowStep, BusinessAction, BusinessActionVariant
 from .forms import ScenarioStepForm 
 
-class WorkflowStepInline(LifecycleInlineMixin, admin.StackedInline):
+class WorkflowStepInline(LifecycleInlineMixin, VisibleToInlineMixin, admin.StackedInline):
     model = WorkflowStep
     extra = 0
     autocomplete_fields = ('business_action',)
@@ -1101,7 +1093,7 @@ class WorkflowAdmin(LifecycleAdminMixin, AccessControlAdminMixin, admin.ModelAdm
         )
 
 
-class BusinessActionVariantInline(LifecycleInlineMixin, admin.StackedInline):
+class BusinessActionVariantInline(LifecycleInlineMixin, VisibleToInlineMixin, admin.StackedInline):
     model = BusinessActionVariant
     extra = 0
     fk_name = 'business_action'

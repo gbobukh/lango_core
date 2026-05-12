@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.db import models
 from integrations.admin_access import AccessControlAdminMixin
+from integrations.access_control import filter_queryset_for_user
 from .models import (
     TargetParameter,
     PublisherConfig,
@@ -200,10 +201,10 @@ class CompatibilityMatrixAdmin(AccessControlAdminMixin, admin.ModelAdmin):
                 setattr(obj, field_name, getattr(original, field_name))
         super().save_model(request, obj, form, change)
 
-    def get_target_params_json(self):
+    def get_target_params_json(self, request):
         """Returns JSON mapping of TargetParameter ID -> Values list"""
         data = {}
-        for param in TargetParameter.objects.all():
+        for param in filter_queryset_for_user(request.user, TargetParameter.objects.all()):
             data[param.id] = param.values
         return json.dumps(data)
     
@@ -213,12 +214,12 @@ class CompatibilityMatrixAdmin(AccessControlAdminMixin, admin.ModelAdmin):
 
     def add_view(self, request, form_url='', extra_context=None):
         extra_context = extra_context or {}
-        extra_context['target_params_json'] = self.get_target_params_json()
+        extra_context['target_params_json'] = self.get_target_params_json(request)
         return super().add_view(request, form_url, extra_context=extra_context)
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
         extra_context = extra_context or {}
-        extra_context['target_params_json'] = self.get_target_params_json()
+        extra_context['target_params_json'] = self.get_target_params_json(request)
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
 
