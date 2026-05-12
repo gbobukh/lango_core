@@ -46,36 +46,4 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Initial load handling
-    // We only need to trigger update if the field is empty or changed.
-
-    // --- Locking Logic ---
-    const isLockedCheckbox = document.querySelector('#id_is_locked');
-    const fieldsToLock = [
-        document.querySelector('#id_subject_parameter'),
-        document.querySelector('#id_subject_value'),
-        document.querySelector('#id_target_parameter'),
-        document.querySelector('#id_allowed_values')
-    ];
-
-    function toggleLock(locked) {
-        fieldsToLock.forEach(field => {
-            if (field) {
-                if (locked) {
-                    field.setAttribute('disabled', 'disabled');
-                } else {
-                    field.removeAttribute('disabled');
-                }
-            }
-        });
-    }
-
-    if (isLockedCheckbox) {
-        isLockedCheckbox.addEventListener('change', function () {
-            toggleLock(this.checked);
-        });
-
-        // Initial sync (though server likely set it correctly)
-        toggleLock(isLockedCheckbox.checked);
-    }
 });

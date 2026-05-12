@@ -3,6 +3,9 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('[TrackerConfig] JS Loaded');
 
     function initTrackerConfig(container) {
+        if (container.classList.contains('config-widget-locked')) {
+            return;
+        }
         console.log('[TrackerConfig] Init widget:', container);
         const table = container.querySelector('.tracker-config-table');
         const hiddenInput = container.querySelector('input[type="hidden"]');
@@ -50,32 +53,4 @@ document.addEventListener('DOMContentLoaded', function () {
     const widgets = document.querySelectorAll('.tracker-config-widget');
     console.log('[TrackerConfig] Found widgets:', widgets.length);
     widgets.forEach(initTrackerConfig);
-
-    // Global Lock Handling (for Admin Form)
-    const lockCheckbox = document.getElementById('id_is_locked');
-    if (lockCheckbox) {
-        console.log('[TrackerConfig] Found Lock Checkbox');
-
-        lockCheckbox.addEventListener('change', function (e) {
-            const isLocked = e.target.checked;
-            console.log('[TrackerConfig] Lock changed:', isLocked);
-
-            // 1. Lock Widget Inputs
-            widgets.forEach(widget => {
-                const inputs = widget.querySelectorAll('.key-input');
-                inputs.forEach(input => {
-                    input.disabled = isLocked;
-                });
-            });
-
-            // 2. Lock Tracker Selection
-            const trackerSelect = document.getElementById('id_tracker');
-            if (trackerSelect) {
-                trackerSelect.disabled = isLocked;
-            }
-        });
-
-        // Trigger immediately on load to ensure state is correct
-        lockCheckbox.dispatchEvent(new Event('change'));
-    }
 });

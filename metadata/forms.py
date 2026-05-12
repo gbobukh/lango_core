@@ -20,33 +20,33 @@ class CompatibilityMatrixForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         # Populate initial choices if instance exists
         if self.instance and self.instance.pk:
-            if self.instance.subject_parameter:
+            if self.instance.subject_parameter and 'subject_value' in self.fields:
                 vals = self.instance.subject_parameter.values
                 self.fields['subject_value'].choices = [(v, v) for v in vals]
-            
-            if self.instance.target_parameter:
+
+            if self.instance.target_parameter and 'allowed_values' in self.fields:
                 vals = self.instance.target_parameter.values
                 self.fields['allowed_values'].choices = [(v, v) for v in vals]
-        else:
-             # New instance (Add View): Default to Unlocked
-             self.fields['is_locked'].initial = False
-        
+        elif 'is_locked' in self.fields:
+            # New instance (Add View): Default to Unlocked
+            self.fields['is_locked'].initial = False
+
         # Also populate if data is present (validation phase) to prevent "Select valid choice" error
         if self.data:
             subject_param_id = self.data.get('subject_parameter')
             target_param_id = self.data.get('target_parameter')
-            
-            if subject_param_id:
+
+            if subject_param_id and 'subject_value' in self.fields:
                 try:
                     sp = TargetParameter.objects.get(pk=subject_param_id)
                     self.fields['subject_value'].choices = [(v, v) for v in sp.values]
                 except (ValueError, TargetParameter.DoesNotExist):
                     pass
 
-            if target_param_id:
+            if target_param_id and 'allowed_values' in self.fields:
                 try:
                     tp = TargetParameter.objects.get(pk=target_param_id)
                     self.fields['allowed_values'].choices = [(v, v) for v in tp.values]

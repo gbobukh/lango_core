@@ -2,6 +2,9 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('[PublisherConfig] JS Loaded');
 
     function initPublisherConfig(container) {
+        if (container.classList.contains('config-widget-locked')) {
+            return;
+        }
         console.log('[PublisherConfig] Init widget:', container);
         const table = container.querySelector('.publisher-config-table');
         const hiddenInput = container.querySelector('input[type="hidden"]');
@@ -68,34 +71,4 @@ document.addEventListener('DOMContentLoaded', function () {
     const widgets = document.querySelectorAll('.publisher-config-widget');
     console.log('[PublisherConfig] Found widgets:', widgets.length);
     widgets.forEach(initPublisherConfig);
-
-    // Global Lock Handling (for Admin Form)
-    const lockCheckbox = document.getElementById('id_is_locked');
-    if (lockCheckbox) {
-        console.log('[PublisherConfig] Found Lock Checkbox');
-
-        lockCheckbox.addEventListener('change', function (e) {
-            const isLocked = e.target.checked;
-            console.log('[PublisherConfig] Lock changed:', isLocked);
-
-            widgets.forEach(widget => {
-                const inputs = widget.querySelectorAll('input[type="checkbox"]');
-                inputs.forEach(input => {
-                    input.disabled = isLocked;
-
-                    // Re-apply internal logic (if enabled, ttz might still be disabled if exists is unchecked)
-                    if (!isLocked) {
-                        if (input.classList.contains('ttz-cb')) {
-                            const row = input.closest('tr');
-                            const existsCb = row.querySelector('.exists-cb');
-                            input.disabled = !existsCb.checked;
-                        }
-                    }
-                });
-            });
-        });
-
-        // Trigger immediately on load to ensure state is correct
-        lockCheckbox.dispatchEvent(new Event('change'));
-    }
 });

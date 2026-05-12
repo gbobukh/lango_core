@@ -12,6 +12,9 @@ class PublisherConfigWidget(forms.Widget):
         }
         js = ('metadata/js/publisher_config.js',)
 
+    def _is_disabled(self, attrs):
+        return bool((attrs or {}).get('disabled'))
+
     def render(self, name, value, attrs=None, renderer=None):
         # deserializing value
         if isinstance(value, str):
@@ -23,13 +26,18 @@ class PublisherConfigWidget(forms.Widget):
             config = value
         else:
             config = {}
+        config = config or {}
 
-        # Fetch all known parameters
         all_params = TargetParameter.objects.all().order_by('name')
+        widget_disabled = self._is_disabled(attrs)
+        widget_classes = 'publisher-config-widget'
+        if widget_disabled:
+            widget_classes += ' config-widget-locked'
 
         # Build HTML
-        html = [f'<div class="publisher-config-widget" id="widget_{name}">']
-        html.append(f'<input type="hidden" name="{name}" value="{json.dumps(config) if config else "{}"}">')
+        html = [f'<div class="{widget_classes}" id="widget_{name}">']
+        if not widget_disabled:
+            html.append(f'<input type="hidden" name="{name}" value="{json.dumps(config) if config else "{}"}">')
         
         # Inline minimal styles
         html.append("""
@@ -37,6 +45,7 @@ class PublisherConfigWidget(forms.Widget):
             .publisher-config-table { width: 100%; max_width: 600px; border-collapse: collapse; }
             .publisher-config-table th, .publisher-config-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
             .publisher-config-table th { background-color: #f4f4f4; }
+            .config-widget-locked input[disabled] { background-color: #f4f4f4; color: #666; cursor: not-allowed; }
         </style>
         """)
 
@@ -53,8 +62,6 @@ class PublisherConfigWidget(forms.Widget):
             ttz_encoded = state.get('ttz_encoded', False)
 
             # Attrs
-            widget_disabled = attrs.get('disabled', False)
-            
             exists_checked = 'checked' if exists else ''
             ttz_checked = 'checked' if ttz_encoded else ''
             
@@ -92,6 +99,9 @@ class TrackerConfigWidget(forms.Widget):
     class Media:
         js = ('metadata/js/tracker_config.js',)
 
+    def _is_disabled(self, attrs):
+        return bool((attrs or {}).get('disabled'))
+
     def render(self, name, value, attrs=None, renderer=None):
         # Deserializing value
         if isinstance(value, str):
@@ -103,13 +113,19 @@ class TrackerConfigWidget(forms.Widget):
             config = value
         else:
             config = {}
+        config = config or {}
 
         # Fetch all known Global Variables
         all_vars = GlobalVariable.objects.all().order_by('name')
+        widget_disabled = self._is_disabled(attrs)
+        widget_classes = 'tracker-config-widget'
+        if widget_disabled:
+            widget_classes += ' config-widget-locked'
 
         # Build HTML
-        html = [f'<div class="tracker-config-widget" id="widget_{name}">']
-        html.append(f'<input type="hidden" name="{name}" value=\'{json.dumps(config) if config else "{}"}\'>')
+        html = [f'<div class="{widget_classes}" id="widget_{name}">']
+        if not widget_disabled:
+            html.append(f'<input type="hidden" name="{name}" value=\'{json.dumps(config) if config else "{}"}\'>')
         
         # Inline minimal styles (consistent with PublisherConfig)
         html.append("""
@@ -119,6 +135,8 @@ class TrackerConfigWidget(forms.Widget):
             .tracker-config-table th { background-color: #f4f4f4; text-transform: uppercase; font-size: 11px; font-weight: bold; color: #666; }
             .tracker-config-table input[type="text"] { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
             .tracker-config-table input[type="text"]:focus { border-color: #417690; outline: none; }
+            .config-widget-locked .mapping-value { color: #333; }
+            .config-widget-locked input[disabled] { background-color: #f4f4f4; color: #666; cursor: not-allowed; }
         </style>
         """)
 
@@ -135,10 +153,6 @@ class TrackerConfigWidget(forms.Widget):
             
             # Current state (Key for this variable)
             current_key = config.get(var_name, "")
-            
-            # Attrs
-            widget_disabled = attrs.get('disabled', False)
-            disabled_attr = 'disabled' if widget_disabled else ''
 
             html.append(f'<tr data-var-name="{var_name}">')
             
@@ -148,8 +162,14 @@ class TrackerConfigWidget(forms.Widget):
                 html.append(f'<br><small style="color: #666;">{var_desc}</small>')
             html.append('</td>')
             
-            # Key Input
-            html.append(f'<td><input type="text" class="key-input" value="{current_key}" placeholder="e.g. click_id" {disabled_attr}></td>')
+            if widget_disabled:
+                display_key = current_key or '—'
+                html.append(f'<td class="mapping-value">{display_key}</td>')
+            else:
+                html.append(
+                    f'<td><input type="text" class="key-input" value="{current_key}" '
+                    f'placeholder="e.g. click_id"></td>'
+                )
             
             html.append('</tr>')
 

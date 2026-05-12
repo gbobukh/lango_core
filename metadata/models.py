@@ -49,11 +49,6 @@ class PublisherConfig(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def save(self, *args, **kwargs):
-        # Auto-lock on save
-        self.is_locked = True
-        super().save(*args, **kwargs)
-
     @property
     def publisher_name(self):
         return self.partner_account.name
@@ -191,11 +186,6 @@ class TrackerConfig(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        # Auto-lock on save
-        self.is_locked = True
-        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Config for {self.tracker.name}"
