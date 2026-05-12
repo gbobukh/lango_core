@@ -42,6 +42,20 @@ SCENARIO_STEP_FORM_FIELDS_BY_TYPE: dict[str, frozenset[str]] = {
     | frozenset({'action_config', 'auth_context_variable'}),
 }
 
+SCENARIO_STEP_CONTRACT_FORM_FIELDS = frozenset(
+    {
+        'step_type',
+        'method',
+        'action_type',
+        'action_config',
+    }
+)
+
+
+def should_validate_scenario_step_admin_form(form) -> bool:
+    """Skip polymorphic contract checks when the inline row is read-only."""
+    return any(name in form.fields for name in SCENARIO_STEP_CONTRACT_FORM_FIELDS)
+
 
 def validate_scenario_step_cleaned(cleaned_data: dict) -> None:
     """

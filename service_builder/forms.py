@@ -4,7 +4,7 @@ from integrations.forms import ClickToEditFormMixin
 from integrations.widgets import ClickToEditWidget
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from .models import ActionConfigLibrary, ServiceEndpoint, ServiceMethod, Scenario, ScenarioStep
-from .scenario_step_contracts import SCENARIO_STEP_FORM_FIELDS_BY_TYPE
+from .scenario_step_contracts import SCENARIO_STEP_FORM_FIELDS_BY_TYPE, should_validate_scenario_step_admin_form
 
 class TestStatusFormMixin(forms.Form):
     mark_as_test = forms.BooleanField(
@@ -148,6 +148,8 @@ class ScenarioStepForm(ClickToEditFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        if not should_validate_scenario_step_admin_form(self):
+            return cleaned_data
         from .scenario_step_contracts import validate_scenario_step_cleaned
 
         validate_scenario_step_cleaned(cleaned_data)

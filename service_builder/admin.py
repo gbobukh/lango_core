@@ -764,6 +764,7 @@ class ActionConfigLibraryAdmin(AccessControlAdminMixin, admin.ModelAdmin):
 
 @admin.register(Scenario)
 class ScenarioAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
+    LOCKED_CONTENT_FIELDS = ('name', 'arguments')
     def get_urls(self):
         urls = super().get_urls()
         from .api import ModelDiscoveryView, ModelFieldsView, ModelChoicesView
@@ -841,11 +842,21 @@ class ScenarioAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
         return qs.filter(visible_to=request.user).distinct()
 
     def save_model(self, request, obj, form, change):
+        if change and obj.is_locked:
+            original = Scenario.objects.get(pk=obj.pk)
+            for field_name in self.LOCKED_CONTENT_FIELDS:
+                setattr(obj, field_name, getattr(original, field_name))
         super().save_model(request, obj, form, change)
         if not change:  # Only on creation
             obj.visible_to.add(request.user)
             
     def save_formset(self, request, form, formset, change):
+        if change and form.instance.is_locked:
+            formset.new_objects = []
+            formset.changed_objects = []
+            formset.deleted_objects = []
+            return
+
         # Handle deletions manually because we use commit=False
         instances = formset.save(commit=False)
         
