@@ -217,8 +217,6 @@ class LifecycleInlineMixin:
         return readonly
 
 
-print("DEBUG: RELOADING SERVICE_BUILDER/ADMIN.PY")
-
 @admin.register(ServiceEndpoint)
 class ServiceEndpointAdmin(LifecycleAdminMixin, VisibleToAdminMixin, admin.ModelAdmin):
     form = ServiceEndpointForm
@@ -753,6 +751,15 @@ class ScenarioStepInlineAdminFormSet(admin_helpers.InlineAdminFormSet):
             )
 
 
+def _can_manage_action_config_library_access(request, model_admin, obj):
+    """Show Access Control fieldset for anyone who may add or change a library entry (not superuser-only)."""
+    if request.user.is_superuser:
+        return True
+    if obj is None:
+        return model_admin.has_add_permission(request)
+    return model_admin.has_change_permission(request, obj)
+
+
 @admin.register(ActionConfigLibrary)
 class ActionConfigLibraryAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     form = ActionConfigLibraryForm
@@ -760,6 +767,38 @@ class ActionConfigLibraryAdmin(AccessControlAdminMixin, admin.ModelAdmin):
     list_filter = ('action_type', 'is_active')
     search_fields = ('name', 'description')
     ordering = ('action_type', 'name')
+    filter_horizontal = ('visible_to',)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = [
+            (
+                None,
+                {
+                    'fields': (
+                        'name',
+                        'description',
+                        'action_type',
+                        'action_config',
+                        'is_active',
+                    ),
+                },
+            ),
+        ]
+        if _can_manage_action_config_library_access(request, self, obj):
+            fieldsets.append(
+                (
+                    'Access Control',
+                    {
+                        'fields': ('visible_to',),
+                        'description': 'Users who can view and use this action config library entry in admin.',
+                        'classes': ('collapse', 'access-control-fieldset'),
+                    },
+                )
+            )
+        return fieldsets
+
+    class Media:
+        js = ('integrations/js/move_access_control.js',)
 
 
 @admin.register(Scenario)

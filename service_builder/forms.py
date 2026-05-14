@@ -199,7 +199,9 @@ class ActionConfigLibraryForm(ClickToEditFormMixin, forms.ModelForm):
             RelatedFieldWidgetWrapper,
         )
 
-        for field in self.fields.values():
+        for name, field in self.fields.items():
+            if name == 'visible_to':
+                continue
             if isinstance(field.widget, ClickToEditWidget):
                 continue
             if isinstance(field.widget, wrap_widgets):
