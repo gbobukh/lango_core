@@ -15,7 +15,7 @@ SCENARIO_ACTION_TYPE_CHOICES = [
     ('MULTI_HIERARCHICAL_FLATTEN', 'Multi-Hierarchical Flatten (N levels)'),
     ('GROUP_BY', 'Group By (Aggregate)'),
     ('FLATTEN_COLLECTION', 'Flatten Collection (Expand List Field)'),
-    ('FIND_OIDH', 'Find OIDH'),
+    ('FIND', 'Find'),
     ('BUILD_OIDH_BLACKLIST', 'Build OIDH Blacklist'),
     ('DICT_TO_LIST', 'Dict to List'),
 ]

@@ -3,6 +3,7 @@ import copy
 import re
 
 from .utils import _resolve_path_part, _resolve_path, _set_path, _MISSING
+from .find_actions import run_find as _run_find_impl
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class ActionRunner:
         """Returns scenario/step context for error messages."""
         if not getattr(self, 'current_step', None):
             return ""
-        s = self.current_step.scenario
+        s = getattr(self.current_step, 'scenario', None)
         name = s.name if s else "?"
         order = getattr(self.current_step, 'order', '?')
         atype = getattr(self.current_step, 'action_type', None) or 'ACTION'
@@ -59,8 +60,8 @@ class ActionRunner:
             return self._run_group_by(config)
         elif action_type == 'FLATTEN_COLLECTION':
             return self._run_flatten_collection(config)
-        elif action_type == 'FIND_OIDH':
-            return self._run_find_oidh(config)
+        elif action_type in ('FIND', 'FIND_OIDH'):
+            return self._run_find(config)
         elif action_type == 'BUILD_OIDH_BLACKLIST':
             return self._run_build_oidh_blacklist(config)
         elif action_type == 'DICT_TO_LIST':
@@ -1590,151 +1591,18 @@ class ActionRunner:
         logger.info(f"FLATTEN_COLLECTION: {len(result)} rows from '{input_name}' (list_field={list_field})")
         return result
 
-    def _run_find_oidh(self, config):
+    def _run_find(self, config):
         """
-        For each item in input list, find the single rule that has the maximum
-        number of exact matches (item's non-numeric values in rule criteria values).
-        If exactly one rule has that maximum count, set its id/name on the item; else None.
-
-        Config:
-        - input: Variable name for list of items (e.g. 'context.sl5_blacklist')
-        - rules: Variable name for list of rules (e.g. 'context.rules')
-        - output_rule_id_key: Key to write matched rule id (e.g. 'matched_rule_id')
-        - output_rule_name_key: Key to write matched rule name (e.g. 'matched_rule_name')
-        - input_campaign_id_field: Key in input items for campaign id (default 'cmp_id'). When step runs with iterator, only input items with this field equal to current iterator campaign id are processed.
-        - iterator_campaign_id_field: Key in context 'item' (iterator) for campaign id (default 'id').
+        FIND dispatcher: oidh_match (default) vs lookup_in_tree. Legacy step type FIND_OIDH
+        is still accepted in run() but is not exposed as a model choice.
         """
-        input_name = config.get('input')
-        rules_name = config.get('rules')
-        output_rule_id_key = config.get('output_rule_id_key', 'matched_rule_id')
-        output_rule_name_key = config.get('output_rule_name_key', 'matched_rule_name')
-        input_campaign_id_field = config.get('input_campaign_id_field', 'cmp_id')
-        iterator_campaign_id_field = config.get('iterator_campaign_id_field', 'id')
-
-        input_list = self._resolve_variable(input_name)
-        if input_list is None:
-            raise ValueError(
-                f"{self._err_prefix()}FIND_OIDH input '{input_name}' not found in context."
-            )
-        if not isinstance(input_list, list):
-            raise ValueError(
-                f"{self._err_prefix()}FIND_OIDH input '{input_name}' must be a list, got {type(input_list)}"
-            )
-
-        # When running with iterator (e.g. over campaigns_current_state), only process input items that belong to the current campaign
-        iterator_item = self.context.get('item')
-        if isinstance(iterator_item, dict):
-            current_campaign_id = iterator_item.get(iterator_campaign_id_field)
-            if current_campaign_id is not None:
-                current_campaign_id = str(current_campaign_id)
-                input_list = [
-                    x for x in input_list
-                    if isinstance(x, dict) and str(x.get(input_campaign_id_field)) == current_campaign_id
-                ]
-                logger.info(
-                    f"FIND_OIDH: filtered input by {input_campaign_id_field}={current_campaign_id} -> {len(input_list)} items"
-                )
-
-        rules_list = self._resolve_variable(rules_name)
-        if rules_list is None:
-            raise ValueError(
-                f"{self._err_prefix()}FIND_OIDH rules '{rules_name}' not found in context."
-            )
-        if not isinstance(rules_list, list):
-            raise ValueError(
-                f"{self._err_prefix()}FIND_OIDH rules '{rules_name}' must be a list, got {type(rules_list)}"
-            )
-
-        def _is_numeric(v):
-            if isinstance(v, (int, float)):
-                return True
-            if isinstance(v, str):
-                try:
-                    float(v)
-                    return True
-                except (ValueError, TypeError):
-                    pass
-            return False
-
-        def _item_non_numeric_values(item):
-            if not isinstance(item, dict):
-                return set()
-            out = set()
-            for v in item.values():
-                if _is_numeric(v):
-                    continue
-                out.add(v)
-            return out
-
-        def _rule_values(rule):
-            if not isinstance(rule, dict):
-                return set()
-            criteria = rule.get('criteria') or []
-            out = set()
-            for c in criteria if isinstance(criteria, list) else []:
-                if not isinstance(c, dict):
-                    continue
-                vals = c.get('values')
-                if isinstance(vals, list):
-                    out.update(vals)
-            return out
-
-        result = []
-        for item in input_list:
-            new_item = dict(item) if isinstance(item, dict) else {}
-            item_vals = _item_non_numeric_values(new_item)
-            if not rules_list:
-                new_item[output_rule_id_key] = None
-                new_item[output_rule_name_key] = None
-                result.append(new_item)
-                continue
-
-            rule_values_list = [_rule_values(r) for r in rules_list]
-            counts = []
-            for rv in rule_values_list:
-                n = sum(1 for v in item_vals if v in rv)
-                counts.append(n)
-
-            max_n = max(counts) if counts else 0
-            if max_n == 0:
-                new_item[output_rule_id_key] = None
-                new_item[output_rule_name_key] = None
-            else:
-                indices_with_max = [i for i, c in enumerate(counts) if c == max_n]
-                if len(indices_with_max) == 1:
-                    chosen = rules_list[indices_with_max[0]]
-                    new_item[output_rule_id_key] = chosen.get('id') if isinstance(chosen, dict) else None
-                    new_item[output_rule_name_key] = chosen.get('name') if isinstance(chosen, dict) else None
-                else:
-                    min_criteria = min(len(rule_values_list[i]) for i in indices_with_max)
-                    narrowed = [i for i in indices_with_max if len(rule_values_list[i]) == min_criteria]
-                    candidates_info = [
-                        f"rule '{rules_list[i].get('name', '?')}' (id={rules_list[i].get('id')}): "
-                        f"{counts[i]} matches / {len(rule_values_list[i])} criteria = "
-                        f"{counts[i]/len(rule_values_list[i]):.0%}"
-                        for i in indices_with_max
-                    ]
-                    if len(narrowed) == 1:
-                        chosen = rules_list[narrowed[0]]
-                        new_item[output_rule_id_key] = chosen.get('id') if isinstance(chosen, dict) else None
-                        new_item[output_rule_name_key] = chosen.get('name') if isinstance(chosen, dict) else None
-                        self._log(
-                            f"FIND_OIDH tie-break: item_vals={item_vals} | candidates: {candidates_info} "
-                            f"-> chose '{chosen.get('name')}' (fewest criteria, highest match ratio)"
-                        )
-                    else:
-                        new_item[output_rule_id_key] = None
-                        new_item[output_rule_name_key] = None
-                        self._log(
-                            f"FIND_OIDH unresolved tie: item_vals={item_vals} | candidates: {candidates_info} "
-                            f"-> matched_rule_id=None"
-                        )
-            result.append(new_item)
-
-        logger.info(
-            f"FIND_OIDH: processed {len(result)} items from '{input_name}', rules from '{rules_name}'"
+        return _run_find_impl(
+            config=config,
+            context=self.context,
+            resolve_variable=self._resolve_variable,
+            log_func=self._log,
+            err_prefix=self._err_prefix(),
         )
-        return result
 
     def _run_build_oidh_blacklist(self, config):
         """

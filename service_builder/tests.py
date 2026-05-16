@@ -815,3 +815,139 @@ class ResolveHierarchicalDisablesTests(TestCase):
         self.assertEqual(op['path'], 'customRotation.rules[2]')
         self.assertEqual(op['op'], 'pause_rule')
         self.assertEqual(report['details'][0]['escalation'], 'path_to_rule')
+
+
+class FindLookupInTreeTests(TestCase):
+    """FIND action: lookup_in_tree (Binom-style paths) + oidh_match (legacy FIND_OIDH behavior)."""
+
+    def _campaign_tree(self):
+        return {
+            'id': 990,
+            'customRotation': {
+                'rules': [
+                    {
+                        'id': 501,
+                        'paths': [
+                            {
+                                'id': 701,
+                                'offers': [
+                                    {'offerId': 901},
+                                    {'offerId': 902},
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+
+    def test_lookup_in_tree_enriches_entities_to_stop_offer_row(self):
+        campaign_snapshot = self._campaign_tree()
+        entities_to_stop = [
+            {'op': 'replace', 'path': 'rules[0].paths[0].offers[1]', 'scope': 'offer'},
+        ]
+        runner = ActionRunner(context={'entities_to_stop': entities_to_stop, 'campaign_snapshot': campaign_snapshot})
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'operation': 'lookup_in_tree',
+                'input': 'entities_to_stop',
+                'source': 'campaign_snapshot',
+                'path_field': 'path',
+                'scope_field': 'scope',
+                'tree': {
+                    'rules_path': 'customRotation.rules',
+                    'paths_segment': 'paths',
+                    'offers_segment': 'offers',
+                },
+            },
+        )
+
+        out = runner.run(step)
+
+        self.assertEqual(len(out), 1)
+        row = out[0]
+        self.assertEqual(row['campaign_id'], 990)
+        self.assertEqual(row['rule_id'], 501)
+        self.assertEqual(row['path_id'], 701)
+        self.assertEqual(row['offer_id'], 902)
+        self.assertEqual(row['op'], 'replace')
+
+    def test_lookup_in_tree_scope_path_omits_offer_id_output(self):
+        campaign_snapshot = self._campaign_tree()
+        entities_to_stop = [
+            {'op': 'disable_path', 'path': 'rules[0].paths[0]', 'scope': 'path'},
+        ]
+        runner = ActionRunner(context={'entities_to_stop': entities_to_stop, 'campaign_snapshot': campaign_snapshot})
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'operation': 'lookup_in_tree',
+                'input': 'entities_to_stop',
+                'source': 'campaign_snapshot',
+            },
+        )
+
+        row = runner.run(step)[0]
+        self.assertEqual(row['rule_id'], 501)
+        self.assertEqual(row['path_id'], 701)
+        self.assertNotIn('offer_id', row)
+
+    def test_oidh_match_default_operation_on_find_action(self):
+        rules_list = [
+            {'id': 10, 'name': 'Wide', 'criteria': [{'values': ['ios', 'us']}]},
+            {'id': 20, 'name': 'Narrow', 'criteria': [{'values': ['ios']}]},
+        ]
+        input_list = [{'device': 'ios', 'geo': 'us', 'qty': 1}]
+        runner = ActionRunner(context={'hits': input_list, 'rules': rules_list})
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'input': 'hits',
+                'rules': 'rules',
+            },
+        )
+
+        out = runner.run(step)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]['matched_rule_id'], 10)
+
+    def test_oidh_match_explicit_operation_oidh_match(self):
+        rules_list = [{'id': 7, 'name': 'Only', 'criteria': [{'values': ['t-mobile']}]}]
+        input_list = [{'carrier': 't-mobile', 'n': 0}]
+        runner = ActionRunner(context={'rows': input_list, 'rl': rules_list})
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'operation': 'oidh_match',
+                'input': 'rows',
+                'rules': 'rl',
+            },
+        )
+        self.assertEqual(runner.run(step)[0]['matched_rule_id'], 7)
+
+    def test_legacy_find_oidh_action_type_dispatches_oidh_match(self):
+        rules_list = [{'id': 3, 'name': 'R', 'criteria': [{'values': ['a']}]}]
+        runner = ActionRunner(context={'rows': [{'k': 'a'}], 'rl': rules_list})
+        step = SimpleNamespace(
+            action_type='FIND_OIDH',
+            action_config={
+                'input': 'rows',
+                'rules': 'rl',
+            },
+        )
+        self.assertEqual(runner.run(step)[0]['matched_rule_id'], 3)
+
+    def test_find_rejects_unknown_operation(self):
+        runner = ActionRunner(context={})
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'operation': 'bogus_op',
+                'input': 'x',
+                'source': 'y',
+            },
+        )
+        with self.assertRaises(ValueError) as ctx:
+            runner.run(step)
+        self.assertIn('unsupported operation', str(ctx.exception).lower())

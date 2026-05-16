@@ -49,7 +49,7 @@ Library contains templates for all current `ACTION` types:
 - `MULTI_HIERARCHICAL_FLATTEN`
 - `GROUP_BY`
 - `FLATTEN_COLLECTION`
-- `FIND_OIDH`
+- `FIND`
 - `BUILD_OIDH_BLACKLIST`
 - `DICT_TO_LIST`
 - `DIFF_OBJECTS`
