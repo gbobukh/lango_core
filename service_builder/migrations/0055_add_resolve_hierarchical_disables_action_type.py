@@ -3,10 +3,7 @@
 from django.db import migrations, models
 
 
-PRESET_NAME_GENERIC = 'RESOLVE_HIERARCHICAL_DISABLES - Escalate disable ops from tree stats'
-PRESET_NAME_SCENARIO_73 = (
-    'RESOLVE_HIERARCHICAL_DISABLES - After DIFF + TREE_STATS (scenario 73)'
-)
+PRESET_NAME = 'RESOLVE_HIERARCHICAL_DISABLES - Escalate disable ops from tree stats'
 
 DEFAULT_ACTION_CONFIG = {
     'tree': {
@@ -48,45 +45,19 @@ _ACTION_TYPE_CHOICES = [
     ('DICT_TO_LIST', 'Dict to List'),
 ]
 
-SCENARIO_73_ACTION_CONFIG = {
-    **DEFAULT_ACTION_CONFIG,
-    'tree': {
-        **DEFAULT_ACTION_CONFIG['tree'],
-        'stats_path': 'tree_stats_changed_campaign_json',
-    },
-    'input': {
-        **DEFAULT_ACTION_CONFIG['input'],
-        'changes_path': 'diff_changes',
-    },
-}
-
 
 def add_preset(apps, schema_editor):
     ActionConfigLibrary = apps.get_model('service_builder', 'ActionConfigLibrary')
     ActionConfigLibrary.objects.update_or_create(
         action_type='RESOLVE_HIERARCHICAL_DISABLES',
-        name=PRESET_NAME_GENERIC,
+        name=PRESET_NAME,
         defaults={
             'description': (
                 'Resolve offer-level disable changes using TREE_STATS_BY_PATHS branch stats. '
                 'Escalates to path or rule scope when disabling the last active child would '
-                'violate min_active_children. Writes safe_disable_ops and guard_report to context. '
-                'Generic context keys: branch_stats, proposed_changes.'
+                'violate min_active_children. Writes safe_disable_ops and guard_report to context.'
             ),
             'action_config': DEFAULT_ACTION_CONFIG,
-            'is_active': True,
-        },
-    )
-    ActionConfigLibrary.objects.update_or_create(
-        action_type='RESOLVE_HIERARCHICAL_DISABLES',
-        name=PRESET_NAME_SCENARIO_73,
-        defaults={
-            'description': (
-                'Same as the generic RESOLVE_HIERARCHICAL_DISABLES preset, with context keys '
-                'matching the TEST scenario 73 pipeline: tree_stats_changed_campaign_json and '
-                'diff_changes (after DIFF_OBJECTS + TREE_STATS_BY_PATHS).'
-            ),
-            'action_config': SCENARIO_73_ACTION_CONFIG,
             'is_active': True,
         },
     )
@@ -96,7 +67,7 @@ def remove_preset(apps, schema_editor):
     ActionConfigLibrary = apps.get_model('service_builder', 'ActionConfigLibrary')
     ActionConfigLibrary.objects.filter(
         action_type='RESOLVE_HIERARCHICAL_DISABLES',
-        name__in=[PRESET_NAME_GENERIC, PRESET_NAME_SCENARIO_73],
+        name=PRESET_NAME,
     ).delete()
 
 
