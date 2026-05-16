@@ -619,3 +619,199 @@ class ScenarioStepContractValidationTests(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             validate_scenario_step_cleaned({'step_type': 'WEIRD'})
         self.assertIn('step_type', ctx.exception.error_dict)
+
+
+class ResolveHierarchicalDisablesTests(TestCase):
+    """Integration tests for RESOLVE_HIERARCHICAL_DISABLES (conversation fixtures)."""
+
+    BRANCH_STATS = {
+        'summary': {
+            'requested_paths': 7,
+            'resolved_branches': 7,
+            'unresolved_paths': 0,
+        },
+        'by_branch': {
+            'customRotation.rules[0].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 3,
+            },
+            'customRotation.rules[0].paths[1]': {
+                'offers_enabled': 1,
+                'paths_enabled': 3,
+            },
+            'customRotation.rules[1].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 1,
+            },
+            'customRotation.rules[2].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 1,
+            },
+            'customRotation.rules[3].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 1,
+            },
+            'customRotation.rules[4].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 1,
+            },
+            'customRotation.rules[5].paths[0]': {
+                'offers_enabled': 3,
+                'paths_enabled': 1,
+            },
+        },
+        'unresolved': [],
+    }
+
+    PROPOSED_CHANGES = {
+        'equal': False,
+        'truncated': False,
+        'max_changes': 1000,
+        'changes_count': 7,
+        'summary': {
+            'replacements_count': 7,
+            'additions_count': 0,
+            'removals_count': 0,
+        },
+        'changes': [
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[0].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[0].paths[1].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[1].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[2].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[3].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[4].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+            {
+                'op': 'replace',
+                'path': 'customRotation.rules[5].paths[0].offers[0].enabled',
+                'before': True,
+                'after': False,
+            },
+        ],
+    }
+
+    DEFAULT_CONFIG = {
+        'tree': {
+            'stats_path': 'branch_stats',
+            'stats_branch_key_template': 'customRotation.rules[{r}].paths[{p}]',
+            'stats_rule_key_template': 'customRotation.rules[{r}]',
+            'offers_enabled_field': 'offers_enabled',
+            'paths_enabled_field': 'paths_enabled',
+        },
+        'input': {
+            'changes_path': 'proposed_changes',
+            'path_field': 'path',
+        },
+        'policy': {
+            'min_active_children': 1,
+            'escalation': 'parent',
+            'multi_change_policy': 'simulate_counters',
+        },
+        'output': {
+            'resolved_operations_path': 'safe_disable_ops',
+            'report_path': 'guard_report',
+        },
+    }
+
+    def _run(self, context=None, config=None):
+        context = {
+            'branch_stats': self.BRANCH_STATS,
+            'proposed_changes': self.PROPOSED_CHANGES,
+            **(context or {}),
+        }
+        runner = ActionRunner(context=context)
+        step = SimpleNamespace(
+            action_type='RESOLVE_HIERARCHICAL_DISABLES',
+            action_config=config or self.DEFAULT_CONFIG,
+        )
+        return runner.run(step), context
+
+    def test_resolves_seven_changes_with_one_path_escalation(self):
+        report, context = self._run()
+
+        self.assertEqual(report['summary']['input_changes'], 7)
+        self.assertEqual(report['summary']['resolved_operations'], 7)
+        self.assertEqual(report['summary']['offer_level'], 6)
+        self.assertEqual(report['summary']['path_level'], 1)
+        self.assertEqual(report['summary']['rule_level'], 0)
+        self.assertEqual(report['summary']['rejected'], 0)
+        self.assertEqual(report['summary']['multi_change_policy'], 'simulate_counters')
+
+        ops = context['safe_disable_ops']
+        self.assertEqual(len(ops), 7)
+
+        path_ops = [op for op in ops if op['scope'] == 'path']
+        self.assertEqual(len(path_ops), 1)
+        self.assertEqual(path_ops[0]['path'], 'customRotation.rules[0].paths[1]')
+        self.assertEqual(path_ops[0]['op'], 'disable_path')
+        self.assertEqual(
+            path_ops[0]['escalated_from'],
+            'customRotation.rules[0].paths[1].offers[0].enabled',
+        )
+
+        offer_ops = [op for op in ops if op['scope'] == 'offer']
+        self.assertEqual(len(offer_ops), 6)
+
+        escalated = [
+            d for d in report['details'] if d.get('escalation') == 'offer_to_path'
+        ]
+        self.assertEqual(len(escalated), 1)
+        self.assertIn('Only one active offer', escalated[0]['note'])
+
+    def test_rule_escalation_when_only_one_active_path(self):
+        stats = {
+            'by_branch': {
+                'customRotation.rules[2].paths[0]': {
+                    'offers_enabled': 1,
+                    'paths_enabled': 1,
+                },
+            },
+        }
+        changes = {
+            'changes': [
+                {
+                    'op': 'replace',
+                    'path': 'customRotation.rules[2].paths[0].offers[0].enabled',
+                    'after': False,
+                },
+            ],
+        }
+        report, context = self._run(
+            context={'branch_stats': stats, 'proposed_changes': changes}
+        )
+
+        self.assertEqual(report['summary']['rule_level'], 1)
+        op = context['safe_disable_ops'][0]
+        self.assertEqual(op['scope'], 'rule')
+        self.assertEqual(op['path'], 'customRotation.rules[2]')
+        self.assertEqual(op['op'], 'pause_rule')
+        self.assertEqual(report['details'][0]['escalation'], 'path_to_rule')

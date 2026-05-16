@@ -9,6 +9,7 @@ SCENARIO_ACTION_TYPE_CHOICES = [
     ('TRANSFORM', 'Transform Data'),
     ('DIFF_OBJECTS', 'Diff Objects'),
     ('TREE_STATS_BY_PATHS', 'Tree Stats by Paths'),
+    ('RESOLVE_HIERARCHICAL_DISABLES', 'Resolve Hierarchical Disables'),
     ('ENRICH', 'Enrich List (Join & Append)'),
     ('HIERARCHICAL_FLATTEN', 'Hierarchical Flatten (Parent→Child)'),
     ('MULTI_HIERARCHICAL_FLATTEN', 'Multi-Hierarchical Flatten (N levels)'),

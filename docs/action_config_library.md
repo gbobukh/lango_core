@@ -53,6 +53,7 @@ Library contains templates for all current `ACTION` types:
 - `BUILD_OIDH_BLACKLIST`
 - `DICT_TO_LIST`
 - `DIFF_OBJECTS`
+- `RESOLVE_HIERARCHICAL_DISABLES`
 
 Also included:
 - custom-function-oriented `TRANSFORM` templates (from `SafeEvaluator` custom functions), such as:

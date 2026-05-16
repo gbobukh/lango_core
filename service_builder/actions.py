@@ -65,6 +65,8 @@ class ActionRunner:
             return self._run_build_oidh_blacklist(config)
         elif action_type == 'DICT_TO_LIST':
             return self._run_dict_to_list(config)
+        elif action_type == 'RESOLVE_HIERARCHICAL_DISABLES':
+            return self._run_resolve_hierarchical_disables(config)
         else:
             raise ValueError(f"{self._err_prefix()}Unknown action type: {action_type}")
 
@@ -479,6 +481,19 @@ class ActionRunner:
 
         self._log(f"DICT_TO_LIST: {len(result)} items from '{input_name}'")
         return result
+
+    def _run_resolve_hierarchical_disables(self, config):
+        from .resolve_hierarchical_disables import resolve_hierarchical_disables
+
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"{self._err_prefix()}RESOLVE_HIERARCHICAL_DISABLES action_config must be an object."
+            )
+        return resolve_hierarchical_disables(
+            context=self.context,
+            config=config,
+            log_func=self._log,
+        )
 
     def _run_tree_stats_by_paths_legacy(self, config):
         """
