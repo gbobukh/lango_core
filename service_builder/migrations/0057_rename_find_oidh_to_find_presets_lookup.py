@@ -21,7 +21,7 @@ _ACTION_TYPE_CHOICES = [
 ]
 
 PRESET_OIDH_NAME = 'FIND - Match OIDH rule'
-PRESET_LOOKUP_NAME = 'FIND - Lookup IDs in campaign tree'
+PRESET_LOOKUP_NAME = 'FIND - Lookup IDs in hierarchical tree'
 
 
 def migrate_action_type_forward(apps, schema_editor):
@@ -71,21 +71,21 @@ def add_find_presets(apps, schema_editor):
             ),
             'action_config': {
                 'operation': 'lookup_in_tree',
-                'input': 'context.entities_to_stop',
-                'source': 'context.campaign_snapshot',
+                'input': 'context.items_to_enrich',
+                'source': 'context.tree_source',
                 'path_field': 'path',
                 'scope_field': 'scope',
                 'tree': {
                     'rules_path': 'customRotation.rules',
                     'paths_segment': 'paths',
                     'offers_segment': 'offers',
-                    'campaign_id_field': 'id',
+                    'root_id_field': 'id',
                     'rule_id_field': 'id',
                     'path_id_field': 'id',
                     'offer_id_field': 'offerId',
                 },
                 'output': {
-                    'campaign_id': 'campaign_id',
+                    'root_id': 'root_id',
                     'rule_id': 'rule_id',
                     'path_id': 'path_id',
                     'offer_id': 'offer_id',

@@ -1,5 +1,5 @@
 """
-FIND action operations: oidh_match (legacy FIND_OIDH) and lookup_in_tree (resolve API ids).
+FIND action operations: oidh_match (legacy FIND_OIDH) and lookup_in_tree (resolve ids in any hierarchical JSON tree).
 """
 from __future__ import annotations
 
@@ -21,6 +21,31 @@ PATH_INDICES_RE = re.compile(
 RULE_INDEX_RE = re.compile(
     r'rules\[(\d+)\]'
 )
+
+LOGICAL_ID_KEYS = ('root_id', 'rule_id', 'path_id', 'offer_id')
+
+
+def _tree_root_id_field(tree_cfg: dict) -> str:
+    return (
+        tree_cfg.get('root_id_field')
+        or tree_cfg.get('campaign_id_field')  # legacy alias
+        or 'id'
+    )
+
+
+def _normalize_output_map(raw: dict | None) -> dict[str, str]:
+    defaults = {
+        'root_id': 'root_id',
+        'rule_id': 'rule_id',
+        'path_id': 'path_id',
+        'offer_id': 'offer_id',
+    }
+    if not raw:
+        return defaults
+    merged = {**defaults, **raw}
+    if 'campaign_id' in raw and 'root_id' not in raw:
+        merged['root_id'] = raw['campaign_id']
+    return merged
 
 
 def run_find(
@@ -246,10 +271,10 @@ def _lookup_ids_from_tree(
     path_id_field = tree_cfg.get('path_id_field') or 'id'
     offer_id_field = tree_cfg.get('offer_id_field') or 'offerId'
     rule_id_field = tree_cfg.get('rule_id_field') or 'id'
-    campaign_id_field = tree_cfg.get('campaign_id_field') or 'id'
+    root_id_field = _tree_root_id_field(tree_cfg)
 
     out: dict[str, Any] = {
-        'campaign_id': root.get(campaign_id_field),
+        'root_id': root.get(root_id_field),
         'rule_id': None,
         'path_id': None,
         'offer_id': None,
@@ -301,7 +326,7 @@ def _lookup_ids_from_stats(
     from .resolve_hierarchical_disables import _extract_by_branch
 
     out: dict[str, Any] = {
-        'campaign_id': None,
+        'root_id': None,
         'rule_id': None,
         'path_id': None,
         'offer_id': None,
@@ -349,7 +374,7 @@ def run_lookup_in_tree(
     log_func: Callable[[str], None] | None = None,
     err_prefix: str = '',
 ) -> list:
-    """For each input row, parse path indices and attach campaign/rule/path/offer API ids."""
+    """For each input row, parse path indices and attach root/rule/path/leaf API ids from a source tree."""
     input_name = config.get('input')
     source_name = config.get('source')
     path_field = config.get('path_field') or 'path'
@@ -359,12 +384,7 @@ def run_lookup_in_tree(
         source_list_index = int(source_list_index)
 
     tree_cfg = config.get('tree') or {}
-    output_map = config.get('output') or {
-        'campaign_id': 'campaign_id',
-        'rule_id': 'rule_id',
-        'path_id': 'path_id',
-        'offer_id': 'offer_id',
-    }
+    output_map = _normalize_output_map(config.get('output'))
     stats_cfg = config.get('stats') or {}
 
     input_list = resolve_variable(input_name)
@@ -423,18 +443,18 @@ def run_lookup_in_tree(
                 rules_ids_field=stats_cfg.get('rules_ids_field') or 'rules_ids',
                 rule_key_template=rule_tpl,
             )
-            for key in ('campaign_id', 'rule_id', 'path_id', 'offer_id'):
+            for key in LOGICAL_ID_KEYS:
                 if ids.get(key) is None and stats_ids.get(key) is not None:
                     ids[key] = stats_ids[key]
 
         if scope == 'offer':
-            keys_to_write = ('campaign_id', 'rule_id', 'path_id', 'offer_id')
+            keys_to_write = LOGICAL_ID_KEYS
         elif scope == 'path':
-            keys_to_write = ('campaign_id', 'rule_id', 'path_id')
+            keys_to_write = ('root_id', 'rule_id', 'path_id')
         elif scope == 'rule':
-            keys_to_write = ('campaign_id', 'rule_id')
+            keys_to_write = ('root_id', 'rule_id')
         else:
-            keys_to_write = ('campaign_id', 'rule_id', 'path_id', 'offer_id')
+            keys_to_write = LOGICAL_ID_KEYS
 
         had_any = False
         for logical_key in keys_to_write:

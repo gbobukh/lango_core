@@ -818,9 +818,9 @@ class ResolveHierarchicalDisablesTests(TestCase):
 
 
 class FindLookupInTreeTests(TestCase):
-    """FIND action: lookup_in_tree (Binom-style paths) + oidh_match (legacy FIND_OIDH behavior)."""
+    """FIND action: lookup_in_tree (hierarchical paths) + oidh_match (legacy FIND_OIDH behavior)."""
 
-    def _campaign_tree(self):
+    def _sample_tree_source(self):
         return {
             'id': 990,
             'customRotation': {
@@ -841,18 +841,20 @@ class FindLookupInTreeTests(TestCase):
             },
         }
 
-    def test_lookup_in_tree_enriches_entities_to_stop_offer_row(self):
-        campaign_snapshot = self._campaign_tree()
-        entities_to_stop = [
+    def test_lookup_in_tree_enriches_items_offer_row(self):
+        tree_source = self._sample_tree_source()
+        items_to_enrich = [
             {'op': 'replace', 'path': 'rules[0].paths[0].offers[1]', 'scope': 'offer'},
         ]
-        runner = ActionRunner(context={'entities_to_stop': entities_to_stop, 'campaign_snapshot': campaign_snapshot})
+        runner = ActionRunner(
+            context={'items_to_enrich': items_to_enrich, 'tree_source': tree_source}
+        )
         step = SimpleNamespace(
             action_type='FIND',
             action_config={
                 'operation': 'lookup_in_tree',
-                'input': 'entities_to_stop',
-                'source': 'campaign_snapshot',
+                'input': 'items_to_enrich',
+                'source': 'tree_source',
                 'path_field': 'path',
                 'scope_field': 'scope',
                 'tree': {
@@ -867,24 +869,55 @@ class FindLookupInTreeTests(TestCase):
 
         self.assertEqual(len(out), 1)
         row = out[0]
-        self.assertEqual(row['campaign_id'], 990)
+        self.assertEqual(row['root_id'], 990)
         self.assertEqual(row['rule_id'], 501)
         self.assertEqual(row['path_id'], 701)
         self.assertEqual(row['offer_id'], 902)
         self.assertEqual(row['op'], 'replace')
 
-    def test_lookup_in_tree_scope_path_omits_offer_id_output(self):
-        campaign_snapshot = self._campaign_tree()
-        entities_to_stop = [
-            {'op': 'disable_path', 'path': 'rules[0].paths[0]', 'scope': 'path'},
-        ]
-        runner = ActionRunner(context={'entities_to_stop': entities_to_stop, 'campaign_snapshot': campaign_snapshot})
+    def test_lookup_in_tree_legacy_campaign_output_keys(self):
+        """output.campaign_id and tree.campaign_id_field remain supported."""
+        tree_source = self._sample_tree_source()
+        items = [{'path': 'rules[0].paths[0].offers[0]', 'scope': 'offer'}]
+        runner = ActionRunner(context={'items': items, 'tree_source': tree_source})
         step = SimpleNamespace(
             action_type='FIND',
             action_config={
                 'operation': 'lookup_in_tree',
-                'input': 'entities_to_stop',
-                'source': 'campaign_snapshot',
+                'input': 'items',
+                'source': 'tree_source',
+                'tree': {
+                    'rules_path': 'customRotation.rules',
+                    'paths_segment': 'paths',
+                    'offers_segment': 'offers',
+                    'campaign_id_field': 'id',
+                },
+                'output': {
+                    'campaign_id': 'campaign_id',
+                    'rule_id': 'rule_id',
+                    'path_id': 'path_id',
+                    'offer_id': 'offer_id',
+                },
+            },
+        )
+        row = runner.run(step)[0]
+        self.assertEqual(row['campaign_id'], 990)
+        self.assertEqual(row['offer_id'], 901)
+
+    def test_lookup_in_tree_scope_path_omits_offer_id_output(self):
+        tree_source = self._sample_tree_source()
+        items_to_enrich = [
+            {'op': 'disable_path', 'path': 'rules[0].paths[0]', 'scope': 'path'},
+        ]
+        runner = ActionRunner(
+            context={'items_to_enrich': items_to_enrich, 'tree_source': tree_source}
+        )
+        step = SimpleNamespace(
+            action_type='FIND',
+            action_config={
+                'operation': 'lookup_in_tree',
+                'input': 'items_to_enrich',
+                'source': 'tree_source',
             },
         )
 
