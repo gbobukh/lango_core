@@ -980,8 +980,17 @@ class WorkflowStepInline(LifecycleInlineMixin, VisibleToInlineMixin, admin.Stack
                 ('is_active', 'order', 'business_action'),
                 'tracker_from_argument',
                 ('get_step_inputs', 'get_step_outputs'),
-                'input_mapping',
             )
+        }),
+        ('Iteration', {
+            'fields': ('iterator_variable',),
+            'description': (
+                'If Iterator variable is set, the Business Action runs once per list element '
+                'from workflow context. Map action arguments with {{ item }} (and dot paths, e.g. {{ item.id }}).'
+            ),
+        }),
+        (None, {
+            'fields': ('input_mapping',),
         }),
     )
     
@@ -1028,7 +1037,7 @@ class WorkflowStepInline(LifecycleInlineMixin, VisibleToInlineMixin, admin.Stack
     
     class Media:
         js = (
-            'service_builder/js/argument_mapping_workflow_v9.js',
+            'service_builder/js/argument_mapping_workflow_v10.js',
             'service_builder/js/context_help.js',
         )
 
