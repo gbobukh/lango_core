@@ -986,14 +986,26 @@ class ActionRunner:
         calculate_map = config.get('calculate', {})
         select_fields = config.get('select')
 
-        if operation == 'update_nested_by_predicate':
+        if operation in ('update_nested_by_predicate', 'count_nested_by_predicate'):
             if not input_name:
-                raise ValueError(f"{self._err_prefix()}Transform operation 'update_nested_by_predicate' requires 'input'.")
+                raise ValueError(
+                    f"{self._err_prefix()}Transform operation '{operation}' requires 'input'."
+                )
 
             root_obj = self._resolve_variable(input_name)
+            if isinstance(root_obj, list):
+                if len(root_obj) == 1 and isinstance(root_obj[0], dict):
+                    root_obj = root_obj[0]
+                elif not root_obj:
+                    root_obj = {}
+                else:
+                    raise ValueError(
+                        f"{self._err_prefix()}Transform operation '{operation}' requires a single dict "
+                        f"or one-element list, got list(len={len(root_obj)})."
+                    )
             if not isinstance(root_obj, dict):
                 raise ValueError(
-                    f"{self._err_prefix()}Transform operation 'update_nested_by_predicate' requires dict input, got {type(root_obj)}"
+                    f"{self._err_prefix()}Transform operation '{operation}' requires dict input, got {type(root_obj)}"
                 )
 
             scope_path = config.get('scope_path') or ''
@@ -1005,11 +1017,13 @@ class ActionRunner:
             if not isinstance(target_collections, list) or not target_collections:
                 raise ValueError(f"{self._err_prefix()}update_nested_by_predicate requires non-empty list 'target_collections'.")
             if not isinstance(predicate, dict):
-                raise ValueError(f"{self._err_prefix()}update_nested_by_predicate requires object 'predicate'.")
-            if not isinstance(patch, dict) or not patch:
-                raise ValueError(f"{self._err_prefix()}update_nested_by_predicate requires non-empty object 'patch'.")
-
-            result_obj = copy.deepcopy(root_obj)
+                raise ValueError(f"{self._err_prefix()}{operation} requires object 'predicate'.")
+            if operation == 'update_nested_by_predicate':
+                if not isinstance(patch, dict) or not patch:
+                    raise ValueError(f"{self._err_prefix()}update_nested_by_predicate requires non-empty object 'patch'.")
+                result_obj = copy.deepcopy(root_obj)
+            else:
+                result_obj = root_obj
 
             def _resolve_scope_nodes():
                 if not scope_path:
@@ -1102,7 +1116,7 @@ class ActionRunner:
                     for candidate, candidate_path in _walk_collection_pattern(scope_node, scope_node_path, pattern):
                         if _matches(candidate):
                             matched_count += 1
-                            if isinstance(candidate, dict):
+                            if operation == 'update_nested_by_predicate' and isinstance(candidate, dict):
                                 changed = False
                                 for patch_key, patch_value in patch.items():
                                     resolved_patch = _resolve_template_value(patch_value)
@@ -1113,10 +1127,55 @@ class ActionRunner:
                                 if changed:
                                     updated_count += 1
 
+            if operation == 'count_nested_by_predicate':
+                self._log(
+                    f"TRANSFORM count_nested_by_predicate: matched={matched_count}, input='{input_name}'"
+                )
+                return {'matched_count': matched_count}
+
             self._log(
                 f"TRANSFORM update_nested_by_predicate: matched={matched_count}, updated={updated_count}, input='{input_name}'"
             )
             return result_obj
+
+        if operation == 'count_flag_in_scenario_results':
+            input_name = config.get('input')
+            flag_name = config.get('context_flag') or 'offer_enabled_in_campaign'
+            id_field = config.get('id_context_field') or 'id'
+            entries = self._resolve_variable(input_name)
+            if entries is None:
+                raise ValueError(
+                    f"{self._err_prefix()}count_flag_in_scenario_results input '{input_name}' not found in context."
+                )
+            if not isinstance(entries, list):
+                raise ValueError(
+                    f"{self._err_prefix()}count_flag_in_scenario_results input must be a list, got {type(entries)}"
+                )
+            still_active_ids = []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get('success') is False:
+                    continue
+                ctx = entry.get('context') or entry.get('context_variables') or {}
+                if not isinstance(ctx, dict):
+                    continue
+                if not ctx.get(flag_name):
+                    continue
+                campaign_id = ctx.get(id_field)
+                if campaign_id is None and isinstance(entry.get('item'), dict):
+                    campaign_id = entry['item'].get('id')
+                still_active_ids.append(campaign_id)
+            summary = {
+                'still_active_count': len(still_active_ids),
+                'still_active_campaign_ids': still_active_ids,
+                'offer_still_active_anywhere': len(still_active_ids) > 0,
+            }
+            self._log(
+                'TRANSFORM count_flag_in_scenario_results: '
+                f"still_active_count={summary['still_active_count']}"
+            )
+            return summary
         
         # GLOBAL CALCULATION MODE (No Input List)
         if not input_name:

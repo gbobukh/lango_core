@@ -6,8 +6,14 @@ from django.contrib.auth.models import User
 from django.test import RequestFactory, TestCase
 
 from integrations.models import Tracker
-from service_builder.models import BusinessAction, BusinessActionVariant, Scenario
-from service_builder.utils import ActionRunner
+from service_builder.models import (
+    BusinessAction,
+    BusinessActionVariant,
+    Scenario,
+    Workflow,
+    WorkflowStep,
+)
+from service_builder.utils import ActionRunner, WorkflowRunner
 from service_builder.views import TestEndpointView
 
 
@@ -131,6 +137,114 @@ class DiffObjectsActionTests(TestCase):
         self.assertTrue(result['truncated'])
         self.assertEqual(result['max_changes'], 2)
         self.assertEqual(result['changes_count'], 2)
+
+
+class TransformCountNestedByPredicateTests(TestCase):
+    def test_count_enabled_offer_in_rotation(self):
+        campaign = {
+            'customRotation': {
+                'defaultPaths': [
+                    {
+                        'offers': [
+                            {'offerId': 77, 'enabled': True},
+                            {'offerId': 99, 'enabled': False},
+                        ]
+                    }
+                ],
+                'rules': [
+                    {
+                        'paths': [
+                            {
+                                'offers': [
+                                    {'offerId': 77, 'enabled': False},
+                                    {'offerId': 50, 'enabled': True},
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            }
+        }
+        runner = ActionRunner(context={'campaign_json': [campaign], 'offer_id': 77})
+        step = SimpleNamespace(
+            action_type='TRANSFORM',
+            action_config={
+                'operation': 'count_nested_by_predicate',
+                'input': 'context.campaign_json',
+                'scope_path': '',
+                'target_collections': [
+                    'customRotation.defaultPaths[].offers[]',
+                    'customRotation.rules[].paths[].offers[]',
+                ],
+                'match_mode': 'all',
+                'predicate': {
+                    'conditions': [
+                        {'field': 'offerId', 'op': '==', 'value_from': 'offer_id'},
+                        {'field': 'enabled', 'op': '==', 'value': True},
+                    ],
+                },
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result['matched_count'], 1)
+
+
+class TransformCountFlagInScenarioResultsTests(TestCase):
+    def test_count_flag_in_scenario_results(self):
+        verify_results = [
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': True, 'id': '10'},
+            },
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': False, 'id': '11'},
+            },
+            {'success': False, 'error': 'boom', 'item': {'id': '12'}},
+        ]
+        runner = ActionRunner(context={'verify_results': verify_results})
+        step = SimpleNamespace(
+            action_type='TRANSFORM',
+            action_config={
+                'operation': 'count_flag_in_scenario_results',
+                'input': 'verify_results',
+                'context_flag': 'offer_enabled_in_campaign',
+                'id_context_field': 'id',
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result['still_active_count'], 1)
+        self.assertEqual(result['still_active_campaign_ids'], ['10'])
+        self.assertTrue(result['offer_still_active_anywhere'])
+
+
+class Auto2VerifyAssertExpressionTests(TestCase):
+    """SafeEvaluator expressions used in auto-2 verify/assert bootstrap scenarios."""
+
+    def test_verify_calculate_from_wrapped_count_result(self):
+        from service_builder.safe_eval import SafeEvaluator
+
+        evaluator = SafeEvaluator(
+            context={'offer_count_result': [{'matched_count': 0}]},
+        )
+        self.assertFalse(evaluator.evaluate('offer_count_result[0]["matched_count"] > 0'))
+        self.assertEqual(evaluator.evaluate('offer_count_result[0]["matched_count"]'), 0)
+
+        evaluator.context['offer_count_result'] = [{'matched_count': 2}]
+        self.assertTrue(evaluator.evaluate('offer_count_result[0]["matched_count"] > 0'))
+
+    def test_assert_success_condition_still_active_zero(self):
+        from service_builder.safe_eval import SafeEvaluator
+
+        evaluator = SafeEvaluator(context={'result': {'still_active_count': 0}})
+        self.assertTrue(evaluator.evaluate('result["still_active_count"] == 0'))
+
+        evaluator.context['result'] = {'still_active_count': 1}
+        self.assertFalse(evaluator.evaluate('result["still_active_count"] == 0'))
 
 
 class TransformUpdateNestedByPredicateTests(TestCase):
@@ -984,3 +1098,134 @@ class FindLookupInTreeTests(TestCase):
         with self.assertRaises(ValueError) as ctx:
             runner.run(step)
         self.assertIn('unsupported operation', str(ctx.exception).lower())
+
+
+class _IteratorScenarioRunnerFactory:
+    """Mock ScenarioRunner that fails on selected iteration indices (0-based)."""
+
+    def __init__(self, fail_at_indices):
+        self.fail_at_indices = set(fail_at_indices)
+        self.call_count = 0
+        self.instances = []
+
+    def __call__(self, scenario_id, initial_context):
+        factory = self
+
+        class _Runner:
+            def __init__(self, sid, ctx):
+                self.logs = []
+                self.external_requests = []
+                self.context = dict(ctx)
+                self._index = factory.call_count
+                factory.call_count += 1
+                factory.instances.append(self)
+
+            def run(self):
+                if self._index in factory.fail_at_indices:
+                    raise ValueError(f'boom-{self._index}')
+                return {
+                    'success': True,
+                    'context': {'iteration': self._index},
+                    'context_variables': {'iteration': self._index},
+                    'logs': self.logs,
+                    'external_requests': self.external_requests,
+                }
+
+        return _Runner(scenario_id, initial_context)
+
+
+class WorkflowRunnerIteratorFailureTests(TestCase):
+    def setUp(self):
+        self.tracker = Tracker.objects.create(name='wf-iter-tracker')
+        self.scenario = Scenario.objects.create(
+            name='wf-iter-scenario',
+            arguments=['id'],
+        )
+
+    @patch('service_builder.utils.ScenarioRunner')
+    def test_direct_scenario_iterator_continues_after_failure(self, mock_runner_cls):
+        factory = _IteratorScenarioRunnerFactory(fail_at_indices={0})
+        mock_runner_cls.side_effect = factory
+
+        workflow = Workflow.objects.create(name='wf-direct-iter', arguments=[])
+        WorkflowStep.objects.create(
+            workflow=workflow,
+            order=0,
+            scenario=self.scenario,
+            iterator_variable='items',
+            output_variable_name='step_results',
+            is_active=True,
+        )
+
+        result = WorkflowRunner(
+            workflow.pk,
+            {'items': [{'id': '1'}, {'id': '2'}]},
+        ).run()
+
+        self.assertTrue(result['success'])
+        self.assertEqual(factory.call_count, 2)
+        step_results = result['context']['step_results']
+        self.assertEqual(len(step_results), 2)
+        self.assertFalse(step_results[0]['success'])
+        self.assertEqual(step_results[0]['error'], 'boom-0')
+        self.assertTrue(step_results[1]['success'])
+
+    @patch('service_builder.utils.ScenarioRunner')
+    def test_direct_scenario_single_run_fails_workflow(self, mock_runner_cls):
+        factory = _IteratorScenarioRunnerFactory(fail_at_indices={0})
+        mock_runner_cls.side_effect = factory
+
+        workflow = Workflow.objects.create(name='wf-direct-single', arguments=[])
+        WorkflowStep.objects.create(
+            workflow=workflow,
+            order=0,
+            scenario=self.scenario,
+            iterator_variable=None,
+            output_variable_name='step_results',
+            is_active=True,
+        )
+
+        result = WorkflowRunner(workflow.pk, {}).run()
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'boom-0')
+        self.assertEqual(factory.call_count, 1)
+
+    @patch('service_builder.utils.ScenarioRunner')
+    def test_business_action_iterator_continues_after_failure(self, mock_runner_cls):
+        factory = _IteratorScenarioRunnerFactory(fail_at_indices={0})
+        mock_runner_cls.side_effect = factory
+
+        action = BusinessAction.objects.create(
+            name='wf-iter-action',
+            arguments=['id'],
+        )
+        BusinessActionVariant.objects.create(
+            business_action=action,
+            scenario=self.scenario,
+            tracker=self.tracker,
+            input_mapping={'id': '{{ id }}'},
+        )
+        workflow = Workflow.objects.create(name='wf-ba-iter', arguments=[])
+        WorkflowStep.objects.create(
+            workflow=workflow,
+            order=0,
+            business_action=action,
+            input_mapping={'id': '{{ item.id }}'},
+            iterator_variable='items',
+            output_variable_name='pause_results',
+            tracker_from_argument='',
+            is_active=True,
+        )
+
+        result = WorkflowRunner(
+            workflow.pk,
+            {'items': [{'id': 'c1'}, {'id': 'c2'}]},
+        ).run()
+
+        self.assertTrue(result['success'])
+        self.assertEqual(factory.call_count, 2)
+        pause_results = result['context']['pause_results']
+        self.assertEqual(len(pause_results), 2)
+        self.assertFalse(pause_results[0]['success'])
+        self.assertTrue(pause_results[1]['success'])

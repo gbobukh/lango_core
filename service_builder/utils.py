@@ -1245,6 +1245,38 @@ class WorkflowRunner:
                 skipped.append(key)
         return filtered, skipped
 
+    def _workflow_failure_payload(self, error):
+        return {
+            'success': False,
+            'error': error,
+            'context': self.context,
+            'context_variables': self.context,
+            'logs': self.logs,
+            'external_requests': self.external_requests,
+            'api_calls': self.external_requests,
+        }
+
+    def _handle_scenario_run_exception(self, runner, exc, idx, item, items_to_run, results):
+        """On iterator steps, record failure and continue; on single run, fail the workflow."""
+        self.logs.extend(runner.logs)
+        self.external_requests.extend(runner.external_requests)
+        if len(items_to_run) == 1:
+            self.context.update(runner.context)
+            self.log(f"Scenario failed: {exc}")
+            return self._workflow_failure_payload(str(exc))
+        item_hint = ''
+        if item is not None:
+            if isinstance(item, dict):
+                item_hint = item.get('id', item.get('campaignId', item))
+            else:
+                item_hint = item
+        hint_suffix = f" [item={item_hint}]" if item_hint != '' else ''
+        self.log(
+            f"Scenario failed (iteration {idx + 1}/{len(items_to_run)}): {exc}{hint_suffix}"
+        )
+        results.append({'success': False, 'error': str(exc), 'item': item})
+        return None
+
     def run(self):
         self.log(f"Starting workflow: {self.workflow.name}")
         self._resolve_model_args()
@@ -1300,19 +1332,11 @@ class WorkflowRunner:
                             if len(items_to_run) == 1:
                                 self.context.update(runner.context)
                         except Exception as e:
-                            self.logs.extend(runner.logs)
-                            self.external_requests.extend(runner.external_requests)
-                            self.context.update(runner.context)
-                            self.log(f"Scenario failed: {e}")
-                            return {
-                                'success': False,
-                                'error': str(e),
-                                'context': self.context,
-                                'context_variables': self.context,
-                                'logs': self.logs,
-                                'external_requests': self.external_requests,
-                                'api_calls': self.external_requests,
-                            }
+                            failure = self._handle_scenario_run_exception(
+                                runner, e, idx, item, items_to_run, results
+                            )
+                            if failure is not None:
+                                return failure
 
                     if len(results) > 1 and step.output_variable_name:
                         self.context[step.output_variable_name] = results
@@ -1412,19 +1436,11 @@ class WorkflowRunner:
                                 if len(items_to_run) == 1:
                                     self.context.update(runner.context)
                             except Exception as e:
-                                self.logs.extend(runner.logs)
-                                self.external_requests.extend(runner.external_requests)
-                                self.context.update(runner.context)
-                                self.log(f"Scenario failed: {e}")
-                                return {
-                                    'success': False,
-                                    'error': str(e),
-                                    'context': self.context,
-                                    'context_variables': self.context,
-                                    'logs': self.logs,
-                                    'external_requests': self.external_requests,
-                                    'api_calls': self.external_requests,
-                                }
+                                failure = self._handle_scenario_run_exception(
+                                    runner, e, idx, item, items_to_run, results
+                                )
+                                if failure is not None:
+                                    return failure
 
                         if len(results) > 1:
                             if step.output_variable_name:
