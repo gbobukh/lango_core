@@ -320,14 +320,61 @@ class Auto2VerifyAssertExpressionTests(TestCase):
         evaluator.context['offer_count_result'] = [{'matched_count': 2}]
         self.assertTrue(evaluator.evaluate('offer_count_result[0]["matched_count"] > 0'))
 
-    def test_assert_success_condition_still_active_zero(self):
+    def test_assert_success_condition_matched_count_zero(self):
         from service_builder.safe_eval import SafeEvaluator
 
-        evaluator = SafeEvaluator(context={'result': {'still_active_count': 0}})
-        self.assertTrue(evaluator.evaluate('result["still_active_count"] == 0'))
+        evaluator = SafeEvaluator(context={'result': {'matched_count': 0}})
+        self.assertTrue(evaluator.evaluate('result["matched_count"] == 0'))
 
-        evaluator.context['result'] = {'still_active_count': 1}
-        self.assertFalse(evaluator.evaluate('result["still_active_count"] == 0'))
+        evaluator.context['result'] = {'matched_count': 1}
+        self.assertFalse(evaluator.evaluate('result["matched_count"] == 0'))
+
+
+class AssertAtomicPipelineTests(TestCase):
+    """Assert scenario #81 equivalent: FILTER + TRANSFORM (no count_flag operation)."""
+
+    def test_filter_then_matched_count_summary(self):
+        verify_results = [
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': True, 'id': '10'},
+            },
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': False, 'id': '11'},
+            },
+            {'success': False, 'error': 'boom', 'item': {'id': '12'}},
+        ]
+        runner = ActionRunner(context={'verify_results': verify_results})
+
+        still_enabled = runner.run(
+            SimpleNamespace(
+                action_type='FILTER',
+                action_config={
+                    'input': 'verify_results',
+                    'match': 'all',
+                    'filters': [
+                        {'field': 'success', 'operator': '!=', 'value': False},
+                        {
+                            'field': 'context.offer_enabled_in_campaign',
+                            'operator': '==',
+                            'value': True,
+                        },
+                    ],
+                },
+            )
+        )
+        runner.context['still_enabled_entries'] = still_enabled
+
+        summary = runner.run(
+            SimpleNamespace(
+                action_type='TRANSFORM',
+                action_config={'calculate': {'matched_count': 'len(still_enabled_entries)'}},
+            )
+        )
+
+        self.assertEqual(summary['matched_count'], 1)
+        self.assertEqual(still_enabled[0]['context']['id'], '10')
 
 
 class TransformUpdateNestedByPredicateTests(TestCase):
