@@ -203,6 +203,20 @@ class ActionRunner:
 
         return merged_list
 
+    def _filter_resolve_item_field(self, item, field):
+        """
+        Read a field from a list item for FILTER rules.
+
+        Top-level keys (no '.' or '[' in the name) use dict.get — same as before.
+        Dotted / bracket paths use _resolve_path (e.g. context.offer_enabled_in_campaign).
+        """
+        if not field or not isinstance(field, str):
+            return None
+        if '.' in field or '[' in field:
+            val = _resolve_path(item, field)
+            return None if val is _MISSING else val
+        return item.get(field)
+
     def _run_filter(self, config):
         """
         Filters a list of dictionaries.
@@ -210,7 +224,8 @@ class ActionRunner:
         - input: Variable name (e.g. 'context.campaigns')
         - match: 'all' (AND) or 'any' (OR). Default 'all'.
         - filters: List of dicts:
-            - field: Field to check (e.g. 'status')
+            - field: Top-level key or dotted path within each item (e.g. 'status',
+              'context.offer_enabled_in_campaign')
             - operator: '==', '!=', '>', '<', '>=', '<=', 'contains', 'in'
             - value: Value to compare against
         """
@@ -235,12 +250,7 @@ class ActionRunner:
                 op = f.get('operator')
                 target_val = f.get('value')
                 
-                # Resolve item value (support dot notation?)
-                # For simplicity, supporting only direct keys or dot notation via helper if we wanted.
-                # Let's support simple keys for now. 
-                # Actually, item.get(field) handles simple keys. 
-                # If we want nested, we'd need a helper. Let's do simple get.
-                item_val = item.get(field)
+                item_val = self._filter_resolve_item_field(item, field)
                 
                 is_match = False
                 

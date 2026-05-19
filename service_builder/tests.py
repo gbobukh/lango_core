@@ -96,6 +96,89 @@ class BusinessActionRunTestMappingTests(TestCase):
         self.assertEqual(body.get('outputs', {}).get('sent_status'), 'bar')
 
 
+class FilterActionTests(TestCase):
+    def test_filter_flat_field_unchanged_behavior(self):
+        items = [
+            {'status': 'Active', 'clicks': 10},
+            {'status': 'Paused', 'clicks': 5},
+            {'status': 'Active', 'clicks': 2},
+        ]
+        runner = ActionRunner(context={'items': items})
+        step = SimpleNamespace(
+            action_type='FILTER',
+            action_config={
+                'input': 'items',
+                'match': 'all',
+                'filters': [
+                    {'field': 'status', 'operator': '==', 'value': 'Active'},
+                    {'field': 'clicks', 'operator': '>', 'value': 9},
+                ],
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['status'], 'Active')
+        self.assertEqual(result[0]['clicks'], 10)
+
+    def test_filter_dotted_path_nested_field(self):
+        verify_results = [
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': True, 'id': '10'},
+            },
+            {
+                'success': True,
+                'context': {'offer_enabled_in_campaign': False, 'id': '11'},
+            },
+            {'success': False, 'error': 'boom', 'item': {'id': '12'}},
+        ]
+        runner = ActionRunner(context={'verify_results': verify_results})
+        step = SimpleNamespace(
+            action_type='FILTER',
+            action_config={
+                'input': 'verify_results',
+                'match': 'all',
+                'filters': [
+                    {'field': 'success', 'operator': '!=', 'value': False},
+                    {
+                        'field': 'context.offer_enabled_in_campaign',
+                        'operator': '==',
+                        'value': True,
+                    },
+                ],
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['context']['id'], '10')
+
+    def test_filter_dotted_path_missing_does_not_match(self):
+        items = [{'context': {'id': '1'}}]
+        runner = ActionRunner(context={'items': items})
+        step = SimpleNamespace(
+            action_type='FILTER',
+            action_config={
+                'input': 'items',
+                'match': 'all',
+                'filters': [
+                    {
+                        'field': 'context.offer_enabled_in_campaign',
+                        'operator': '==',
+                        'value': True,
+                    },
+                ],
+            },
+        )
+
+        result = runner.run(step)
+
+        self.assertEqual(result, [])
+
+
 class DiffObjectsActionTests(TestCase):
     def test_diff_objects_reports_replace_add_remove(self):
         runner = ActionRunner(
