@@ -225,6 +225,10 @@ STATIC_URL = '/static/'
 _static_root = os.environ.get('STATIC_ROOT', '').strip()
 STATIC_ROOT = str(Path(_static_root)) if _static_root else str(BASE_DIR / 'staticfiles')
 
+MEDIA_URL = '/media/'
+_media_root = os.environ.get('MEDIA_ROOT', '').strip()
+MEDIA_ROOT = str(Path(_media_root)) if _media_root else str(BASE_DIR / 'media')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

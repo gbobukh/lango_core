@@ -1,5 +1,32 @@
+import os
+import uuid
+
 from django.contrib.auth.models import User
 from django.db import models
+
+
+def api_spec_upload_to(instance, filename):
+    """Store uploaded API specs on disk under tracker-scoped paths."""
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower() if ext else ''
+    stored_name = f'{uuid.uuid4().hex}{ext}'
+    tracker_id = instance.tracker_id or 'unassigned'
+    return f'api_specs/{tracker_id}/{stored_name}'
+
+
+def _format_from_filename(filename):
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext in ('.yaml', '.yml'):
+        return 'openapi'
+    if ext == '.json':
+        return 'json'
+    if ext == '.md':
+        return 'markdown'
+    if ext == '.txt':
+        return 'plain'
+    if ext == '.html':
+        return 'html'
+    return 'unknown'
 
 class TargetParameter(models.Model):
     """
@@ -243,4 +270,74 @@ class SegmentAttribute(models.Model):
         verbose_name = "Segments Attribute"
         verbose_name_plural = "Segments Attributes"
         ordering = ['name']
+
+
+class ApiSpec(models.Model):
+    """Uploaded API specification file for a tracker/platform (read by agents later)."""
+
+    FORMAT_CHOICES = [
+        ('openapi', 'OpenAPI (YAML)'),
+        ('json', 'JSON'),
+        ('markdown', 'Markdown'),
+        ('plain', 'Plain text'),
+        ('html', 'HTML'),
+        ('unknown', 'Unknown'),
+    ]
+
+    tracker = models.ForeignKey(
+        'integrations.Tracker',
+        on_delete=models.CASCADE,
+        related_name='api_specs',
+        help_text='Platform (tracker) this specification belongs to.',
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text='Label for this spec (e.g. "Admin API v2").',
+    )
+    spec_file = models.FileField(
+        upload_to=api_spec_upload_to,
+        help_text='Upload the API specification file from your computer.',
+    )
+    source_filename = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text='Original filename as uploaded by the user.',
+    )
+    format = models.CharField(
+        max_length=20,
+        choices=FORMAT_CHOICES,
+        default='unknown',
+        help_text='Detected or assigned format hint for agents.',
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        related_name='visible_api_specs',
+        blank=True,
+        help_text='Users who can view and use this API spec.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.tracker.name})'
+
+    def save(self, *args, **kwargs):
+        if self.spec_file and not self.source_filename:
+            self.source_filename = os.path.basename(self.spec_file.name)
+        if self.source_filename and self.format == 'unknown':
+            self.format = _format_from_filename(self.source_filename)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        stored_file = self.spec_file
+        super().delete(*args, **kwargs)
+        if stored_file:
+            stored_file.delete(save=False)
+
+    class Meta:
+        verbose_name = 'API Spec'
+        verbose_name_plural = 'API Specs'
+        ordering = ['tracker__name', 'name']
+        unique_together = ('tracker', 'name')
 

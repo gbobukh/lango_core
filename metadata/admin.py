@@ -2,7 +2,11 @@ from django.contrib import admin
 from django.db import models
 from integrations.admin_access import AccessControlAdminMixin
 from integrations.access_control import filter_queryset_for_user
+from django.utils.html import format_html
+
+from .forms import ApiSpecForm
 from .models import (
+    ApiSpec,
     TargetParameter,
     PublisherConfig,
     CompatibilityMatrix,
@@ -228,6 +232,70 @@ class CompatibilityMatrixAdmin(AccessControlAdminMixin, admin.ModelAdmin):
 
 from .models import GlobalVariable, TrackerConfig
 from .widgets import TrackerConfigWidget
+
+
+@admin.register(ApiSpec)
+class ApiSpecAdmin(AccessControlAdminMixin, admin.ModelAdmin):
+    form = ApiSpecForm
+    list_display = ('name', 'tracker', 'format', 'source_filename', 'updated_at')
+    list_filter = ('tracker', 'format')
+    search_fields = ('name', 'source_filename', 'tracker__name')
+    readonly_fields = ('source_filename', 'created_at', 'updated_at', 'spec_file_link')
+
+    fieldsets = (
+        (
+            None,
+            {
+                'fields': (
+                    'tracker',
+                    'name',
+                    'spec_file',
+                    'source_filename',
+                    'format',
+                ),
+            },
+        ),
+        (
+            'Timestamps',
+            {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',),
+            },
+        ),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None:
+            return fieldsets
+        rebuilt = []
+        for title, options in fieldsets:
+            fields = list(options.get('fields', ()))
+            if 'spec_file' in fields and 'spec_file_link' not in fields:
+                insert_at = fields.index('spec_file') + 1
+                fields.insert(insert_at, 'spec_file_link')
+            rebuilt.append((title, {**options, 'fields': tuple(fields)}))
+        return rebuilt
+
+    def spec_file_link(self, obj):
+        if not obj or not obj.spec_file:
+            return '-'
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">{}</a>',
+            obj.spec_file.url,
+            obj.source_filename or obj.spec_file.name,
+        )
+
+    spec_file_link.short_description = 'Current file'
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is None:
+            return [field for field in readonly if field != 'spec_file_link']
+        if 'spec_file_link' not in readonly:
+            readonly.append('spec_file_link')
+        return readonly
+
 
 @admin.register(GlobalVariable)
 class GlobalVariableAdmin(AccessControlAdminMixin, admin.ModelAdmin):
